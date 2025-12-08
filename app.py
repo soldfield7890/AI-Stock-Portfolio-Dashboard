@@ -11,103 +11,120 @@ st.set_page_config(
     layout="wide",
 )
 
-# ----------------- Custom CSS – Findeshy-style, grey + blue -----------------
+# ----------------- Custom CSS – Glassmorphism / Vision Glass -----------------
 st.markdown(
     """
 <style>
 
 /* Global background & font */
 html, body, [class*="css"]  {
-    background-color: #F2F3F7 !important;
-    color: #111827 !important;
+    background: radial-gradient(circle at top left, #E0ECFF 0%, #F5F7FB 40%, #ECF2FF 100%) !important;
+    color: #0F172A !important;
     font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* Main page container */
 .block-container {
     padding-top: 1.5rem;
-    padding-bottom: 2rem;
+    padding-bottom: 2.5rem;
     max-width: 1400px;
 }
 
-/* Top header bar */
+/* Glass card base */
+.glass-card {
+    background: rgba(255, 255, 255, 0.82);
+    border-radius: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+    backdrop-filter: blur(18px);
+}
+
+/* Header card */
 .header-card {
-    background: linear-gradient(135deg, #FFFFFF 0%, #F7FAFF 100%);
-    border-radius: 18px;
     padding: 20px 24px;
-    border: 1px solid #E0E7F1;
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
-    margin-bottom: 16px;
+    margin-bottom: 18px;
+}
+
+/* Upload card container */
+.upload-card {
+    padding: 14px 16px;
+    margin-bottom: 12px;
 }
 
 /* KPI metric cards */
 div[data-testid="metric-container"] {
-    background: #FFFFFF !important;
-    border: 1px solid #E0E7F1 !important;
+    background: rgba(255, 255, 255, 0.9) !important;
+    border: 1px solid rgba(148, 163, 184, 0.25) !important;
     padding: 18px 18px !important;
-    border-radius: 14px !important;
-    box-shadow: 0px 4px 16px rgba(15,23,42,0.04);
+    border-radius: 18px !important;
+    box-shadow: 0px 10px 30px rgba(15,23,42,0.12);
 }
 
-/* File uploader as card */
+/* File uploader as soft glass */
 section[data-testid="stFileUploader"] {
-    background-color: #FFFFFF !important;
-    border: 1px dashed #CBD5E1 !important;
-    border-radius: 12px !important;
+    background: rgba(255, 255, 255, 0.85) !important;
+    border: 1px dashed rgba(148, 163, 184, 0.6) !important;
+    border-radius: 16px !important;
     padding: 14px 14px !important;
 }
 
 /* Headings */
 h1, h2, h3, h4 {
-    color: #0F172A !important;
+    color: #020617 !important;
     font-weight: 600 !important;
     letter-spacing: -0.4px;
 }
 
-/* Tabs styling */
+/* Tabs styling – pill glass nav */
 div[data-baseweb="tab-list"] {
     gap: 6px;
+    padding: 6px 4px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.45);
+    box-shadow: 0 10px 28px rgba(15,23,42,0.12);
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(148, 163, 184, 0.35);
 }
 
 button[role="tab"] {
     border-radius: 999px !important;
-    padding: 6px 14px !important;
+    padding: 6px 16px !important;
     font-size: 0.9rem !important;
-    color: #4B5563 !important;
+    color: #475569 !important;
     border: 1px solid transparent !important;
     background-color: transparent !important;
 }
 
 button[role="tab"][aria-selected="true"] {
-    background-color: #2563EB1A !important;
-    color: #1D4ED8 !important;
-    border-color: #BFDBFE !important;
+    background: linear-gradient(135deg, #2563EB 0%, #38BDF8 100%) !important;
+    color: #F9FAFB !important;
+    border-color: transparent !important;
 }
 
-/* Dataframes */
+/* Dataframes in glass panels */
 .dataframe table, .stDataFrame table {
-    color: #111827 !important;
-    background-color: #FFFFFF !important;
+    color: #020617 !important;
+    background-color: transparent !important;
     border-radius: 12px !important;
 }
 
 thead tr th {
-    background-color: #EEF2FF !important;
+    background-color: rgba(239, 246, 255, 0.9) !important;
     color: #111827 !important;
     font-weight: 600 !important;
 }
 
 tbody tr:hover td {
-    background-color: #F3F4FF !important;
+    background-color: rgba(226, 232, 255, 0.8) !important;
 }
 
 /* Small captions */
 .small-caption {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: #6B7280;
 }
 
-/* Helper classes */
+/* Positive / negative helpers */
 .positive-text {
     color: #16A34A;
     font-weight: 600;
@@ -147,11 +164,11 @@ def highlight_score(val):
     except Exception:
         return ""
     if v >= 70:
-        return "background-color: #DCFCE7; color:#14532D;"
+        return "background-color: rgba(220, 252, 231, 0.9); color:#14532D;"
     elif v >= 50:
-        return "background-color: #FEF9C3; color:#78350F;"
+        return "background-color: rgba(254, 249, 195, 0.9); color:#78350F;"
     else:
-        return "background-color: #FEE2E2; color:#7F1D1D;"
+        return "background-color: rgba(254, 226, 226, 0.9); color:#7F1D1D;"
 
 
 def detect_symbol_column(df: pd.DataFrame):
@@ -164,6 +181,7 @@ def detect_symbol_column(df: pd.DataFrame):
 
 # ----------------- Page renderers -----------------
 def render_overview(scored_df: pd.DataFrame):
+    st.markdown('<div class="glass-card" style="padding:18px 20px;">', unsafe_allow_html=True)
     st.subheader("Portfolio Overview")
 
     # KPIs row
@@ -208,8 +226,8 @@ def render_overview(scored_df: pd.DataFrame):
             )
             fig_score.update_layout(
                 margin=dict(l=10, r=10, t=40, b=10),
-                plot_bgcolor="#FFFFFF",
-                paper_bgcolor="#FFFFFF",
+                plot_bgcolor="rgba(255,255,255,0.9)",
+                paper_bgcolor="rgba(255,255,255,0.0)",
             )
             col_a.plotly_chart(fig_score, use_container_width=True)
 
@@ -230,7 +248,7 @@ def render_overview(scored_df: pd.DataFrame):
             )
             fig_alloc.update_layout(
                 margin=dict(l=10, r=10, t=40, b=10),
-                paper_bgcolor="#FFFFFF",
+                paper_bgcolor="rgba(255,255,255,0.0)",
             )
             col_b.plotly_chart(fig_alloc, use_container_width=True)
 
@@ -248,15 +266,18 @@ def render_overview(scored_df: pd.DataFrame):
             )
             fig_pl.update_layout(
                 margin=dict(l=10, r=10, t=40, b=10),
-                plot_bgcolor="#FFFFFF",
-                paper_bgcolor="#FFFFFF",
+                plot_bgcolor="rgba(255,255,255,0.9)",
+                paper_bgcolor="rgba(255,255,255,0.0)",
                 xaxis_title="Ticker",
                 yaxis_title="Unrealized P/L",
             )
             st.plotly_chart(fig_pl, use_container_width=True)
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
+    st.markdown('<div class="glass-card" style="padding:18px 20px;">', unsafe_allow_html=True)
     st.subheader("Positions & Metrics")
 
     # Decision filter
@@ -300,10 +321,15 @@ def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
         styled = styled.applymap(highlight_score, subset=["Score"])
 
     st.dataframe(styled, use_container_width=True)
-    st.markdown('<p class="small-caption">Full positions view with metrics. Use filters and sorting to focus.</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="small-caption">Use filters and sorting to focus on the positions that matter most.</p>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_fundamentals(scored_df: pd.DataFrame):
+    st.markdown('<div class="glass-card" style="padding:18px 20px;">', unsafe_allow_html=True)
     st.subheader("Fundamentals Snapshot")
 
     symbol_col = detect_symbol_column(scored_df)
@@ -317,6 +343,7 @@ def render_fundamentals(scored_df: pd.DataFrame):
 
     if not cols:
         st.info("No fundamentals columns detected.")
+        st.markdown("</div>", unsafe_allow_html=True)
         return
 
     fundamentals_view = scored_df[cols].copy()
@@ -339,14 +366,20 @@ def render_fundamentals(scored_df: pd.DataFrame):
         styled = styled.applymap(highlight_score, subset=["Score"])
 
     st.dataframe(styled, use_container_width=True)
-    st.markdown('<p class="small-caption">Quick fundamentals view for screening & comparison.</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="small-caption">Screen for valuation, profitability, risk, and your composite score.</p>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_signals(scored_df: pd.DataFrame):
+    st.markdown('<div class="glass-card" style="padding:18px 20px;">', unsafe_allow_html=True)
     st.subheader("Signals & Action List")
 
     if "Decision" not in scored_df.columns:
         st.info("No Decision column found. Check scoring logic.")
+        st.markdown("</div>", unsafe_allow_html=True)
         return
 
     symbol_col = detect_symbol_column(scored_df)
@@ -402,16 +435,18 @@ def render_signals(scored_df: pd.DataFrame):
             cols = [c for c in cols if c in exit_df.columns]
             st.dataframe(exit_df[cols], use_container_width=True)
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # ----------------- Top header + upload -----------------
 st.markdown(
     """
-<div class="header-card">
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap;">
+<div class="glass-card header-card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px; flex-wrap:wrap;">
     <div>
       <h1 style="margin-bottom:4px;">Oldfield AI Stock Dashboard</h1>
-      <p style="margin:0; color:#6B7280; font-size:0.9rem;">
-        Clean, organized view of your positions, fundamentals, and signals — styled like a modern fintech console.
+      <p style="margin:0; color:#64748B; font-size:0.9rem;">
+        Glass-style financial cockpit for tracking positions, fundamentals, and AI-driven signals.
       </p>
     </div>
     <div style="min-width:260px;">
@@ -422,9 +457,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+st.markdown('<div class="glass-card upload-card">', unsafe_allow_html=True)
 upload_col, _ = st.columns([2, 3])
 with upload_col:
     uploaded_file = st.file_uploader("Upload portfolio CSV", type=["csv"])
+st.markdown("</div>", unsafe_allow_html=True)
 
 # ----------------- Main content -----------------
 if uploaded_file is None:
