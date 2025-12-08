@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 
 from src.scoring import score_portfolio
@@ -25,14 +26,14 @@ st.markdown(
 
 /* Main page container */
 .block-container {
-    padding-top: 1.2rem;
-    padding-bottom: 2.2rem;
+    padding-top: 1.0rem;
+    padding-bottom: 2.0rem;
     max-width: 1400px;
 }
 
 /* Glass card base */
 .glass-card {
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.95);
     border-radius: 20px;
     border: 1px solid rgba(148, 163, 184, 0.35);
     box-shadow: 0 18px 40px rgba(15, 23, 42, 0.10);
@@ -42,27 +43,34 @@ st.markdown(
 /* Header bar */
 .header-card {
     padding: 18px 22px;
-    margin-bottom: 14px;
+    margin-bottom: 10px;
 }
 
 /* Upload card container */
 .upload-card {
-    padding: 14px 16px;
-    margin-bottom: 12px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
 }
 
 /* KPI metric cards */
 div[data-testid="metric-container"] {
-    background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(239,246,255,0.96)) !important;
+    background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(239,246,255,0.96)) !important;
     border: 1px solid rgba(148, 163, 184, 0.40) !important;
-    padding: 16px 16px !important;
+    padding: 14px 16px !important;
     border-radius: 16px !important;
-    box-shadow: 0px 10px 26px rgba(15,23,42,0.18);
+    box-shadow: 0px 10px 24px rgba(15,23,42,0.16);
+}
+
+/* Ensure metric text is dark and readable */
+[data-testid="stMetricValue"],
+[data-testid="stMetricLabel"],
+[data-testid="stMetricDelta"] {
+    color: #0F172A !important;
 }
 
 /* File uploader as soft glass */
 section[data-testid="stFileUploader"] {
-    background: rgba(255, 255, 255, 0.94) !important;
+    background: rgba(255, 255, 255, 0.98) !important;
     border: 1px dashed rgba(148, 163, 184, 0.7) !important;
     border-radius: 14px !important;
     padding: 12px 14px !important;
@@ -80,8 +88,8 @@ div[data-baseweb="tab-list"] {
     gap: 8px;
     padding: 6px 6px;
     border-radius: 999px;
-    background: rgba(255,255,255,0.80);
-    box-shadow: 0 14px 32px rgba(15,23,42,0.18);
+    background: rgba(255,255,255,0.92);
+    box-shadow: 0 14px 32px rgba(15,23,42,0.16);
     backdrop-filter: blur(18px);
     border: 1px solid rgba(148, 163, 184, 0.45);
     margin-bottom: 14px;
@@ -102,7 +110,7 @@ button[role="tab"][aria-selected="true"] {
     border-color: transparent !important;
 }
 
-/* Dataframes in glass panels */
+/* Dataframes – light fintech table style */
 .dataframe table, .stDataFrame table {
     color: #020617 !important;
     background-color: transparent !important;
@@ -110,13 +118,24 @@ button[role="tab"][aria-selected="true"] {
 }
 
 thead tr th {
-    background-color: rgba(239, 246, 255, 0.96) !important;
+    background-color: #EEF2FF !important;
     color: #111827 !important;
     font-weight: 600 !important;
 }
 
+tbody tr td {
+    background-color: #FFFFFF !important;
+    color: #111827 !important;
+    border-color: #E5E7EB !important;
+    font-size: 0.86rem !important;
+}
+
+tbody tr:nth-child(even) td {
+    background-color: #F9FAFB !important;
+}
+
 tbody tr:hover td {
-    background-color: rgba(226, 232, 255, 0.9) !important;
+    background-color: #E5EDFF !important;
 }
 
 /* Small caption text */
@@ -180,6 +199,110 @@ def detect_symbol_column(df: pd.DataFrame):
     return None
 
 
+# --- Formatting helpers for tables ---
+def fmt_percent(val, decimals=1):
+    if pd.isna(val):
+        return ""
+    try:
+        v = float(val)
+    except Exception:
+        return ""
+    if v < -10_000 or v > 10_000:
+        return ""
+    return f"{v:.{decimals}f}%"
+
+
+def fmt_ratio_or_percent(val, decimals=1):
+    """Handle values that may be 0–1 or already in percent."""
+    if pd.isna(val):
+        return ""
+    try:
+        v = float(val)
+    except Exception:
+        return ""
+    if abs(v) <= 1:
+        v = v * 100
+    return f"{v:.{decimals}f}%"
+
+
+def fmt_marketcap(val):
+    if pd.isna(val):
+        return ""
+    try:
+        v = float(val)
+    except Exception:
+        return ""
+    abs_v = abs(v)
+    if abs_v >= 1_000_000_000_000:
+        return f"${v/1_000_000_000_000:.2f}T"
+    if abs_v >= 1_000_000_000:
+        return f"${v/1_000_000_000:.2f}B"
+    if abs_v >= 1_000_000:
+        return f"${v/1_000_000:.2f}M"
+    return f"${v:,.0f}"
+
+
+def fmt_currency(val, decimals=0):
+    if pd.isna(val):
+        return ""
+    try:
+        v = float(val)
+    except Exception:
+        return ""
+    return f"${v:,.{decimals}f}"
+
+
+def fmt_number(val, decimals=2):
+    if pd.isna(val):
+        return ""
+    try:
+        v = float(val)
+    except Exception:
+        return ""
+    return f"{v:,.{decimals}f}"
+
+
+def style_table(df: pd.DataFrame, highlight_pl_cols=False, highlight_score_col=False):
+    """Apply consistent formatting and highlighting to any table."""
+    format_dict = {}
+
+    for col in df.columns:
+        cl = col.lower()
+
+        if cl in ("pe_ttm", "forwardpe"):
+            format_dict[col] = lambda v, c=col: fmt_number(v, 2)
+        elif "dividendyield" in cl:
+            format_dict[col] = lambda v, c=col: fmt_ratio_or_percent(v, 2)
+        elif "profitmargin" in cl:
+            format_dict[col] = lambda v, c=col: fmt_ratio_or_percent(v, 1)
+        elif "marketcap" in cl:
+            format_dict[col] = fmt_marketcap
+        elif "beta" in cl:
+            format_dict[col] = lambda v, c=col: fmt_number(v, 2)
+        elif "score" in cl:
+            format_dict[col] = lambda v, c=col: fmt_number(v, 0)
+        elif "portfolioweightpct" in cl:
+            format_dict[col] = lambda v, c=col: fmt_percent(v, 2)
+        elif "unrealizedplpct" in cl:
+            format_dict[col] = lambda v, c=col: fmt_percent(v, 1)
+        elif "unrealizedpl" in cl:
+            format_dict[col] = lambda v, c=col: fmt_currency(v, 0)
+        elif "currentvalue_clean" in cl or "costbasis_clean" in cl:
+            format_dict[col] = lambda v, c=col: fmt_currency(v, 0)
+
+    styler = df.style.format(format_dict, na_rep="")
+
+    if highlight_pl_cols:
+        pl_cols = [c for c in df.columns if "unrealizedpl" in c.lower()]
+        if pl_cols:
+            styler = styler.applymap(highlight_pl, subset=pl_cols)
+
+    if highlight_score_col and "Score" in df.columns:
+        styler = styler.applymap(highlight_score, subset=["Score"])
+
+    return styler
+
+
 # ----------------- Page renderers -----------------
 def render_overview(scored_df: pd.DataFrame):
     st.markdown('<div class="glass-card" style="padding:18px 20px;">', unsafe_allow_html=True)
@@ -193,8 +316,8 @@ def render_overview(scored_df: pd.DataFrame):
         num_positions = len(scored_df)
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Portfolio Value", f"${total_value:,.0f}")
-        c2.metric("Total Unrealized P/L", f"${total_pl:,.0f}")
+        c1.metric("Total Portfolio Value", fmt_currency(total_value, 0))
+        c2.metric("Total Unrealized P/L", fmt_currency(total_pl, 0))
         c3.metric("Positions", int(num_positions))
     else:
         st.info("Could not compute summary metrics. Check your CSV headers.")
@@ -321,14 +444,7 @@ def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
 
     scored_sorted = filtered_df.sort_values(by=sort_col, ascending=sort_ascending)
 
-    # Styled table
-    pl_cols = [c for c in ["UnrealizedPL", "UnrealizedPLPct"] if c in scored_sorted.columns]
-
-    styled = scored_sorted.style
-    if pl_cols:
-        styled = styled.applymap(highlight_pl, subset=pl_cols)
-    if "Score" in scored_sorted.columns:
-        styled = styled.applymap(highlight_score, subset=["Score"])
+    styled = style_table(scored_sorted, highlight_pl_cols=True, highlight_score_col=True)
 
     st.dataframe(styled, use_container_width=True)
     st.markdown(
@@ -385,9 +501,7 @@ def render_fundamentals(scored_df: pd.DataFrame):
 
     fundamentals_view = fundamentals_view.sort_values(by=sort_col, ascending=sort_ascending)
 
-    styled = fundamentals_view.style
-    if "Score" in fundamentals_view.columns:
-        styled = styled.applymap(highlight_score, subset=["Score"])
+    styled = style_table(fundamentals_view, highlight_pl_cols=False, highlight_score_col=True)
 
     st.dataframe(styled, use_container_width=True)
     st.markdown(
@@ -433,7 +547,8 @@ def render_signals(scored_df: pd.DataFrame):
                 "ProfitMargin",
             ]
             cols = [c for c in cols if c in strong_buy.columns]
-            st.dataframe(strong_buy[cols], use_container_width=True)
+            styled = style_table(strong_buy[cols], highlight_pl_cols=True, highlight_score_col=True)
+            st.dataframe(styled, use_container_width=True)
 
     with col2:
         st.markdown("**Buy**")
@@ -449,7 +564,8 @@ def render_signals(scored_df: pd.DataFrame):
                 "ProfitMargin",
             ]
             cols = [c for c in cols if c in buy.columns]
-            st.dataframe(buy[cols], use_container_width=True)
+            styled = style_table(buy[cols], highlight_pl_cols=True, highlight_score_col=True)
+            st.dataframe(styled, use_container_width=True)
 
     st.markdown("#### De-Risk Radar")
     col3, col4 = st.columns(2)
@@ -461,7 +577,8 @@ def render_signals(scored_df: pd.DataFrame):
         else:
             cols = [symbol_col, "Score", "PortfolioWeightPct", "UnrealizedPLPct"]
             cols = [c for c in cols if c in trim.columns]
-            st.dataframe(trim[cols], use_container_width=True)
+            styled = style_table(trim[cols], highlight_pl_cols=True, highlight_score_col=True)
+            st.dataframe(styled, use_container_width=True)
 
     with col4:
         st.markdown("**Exit / Avoid**")
@@ -470,7 +587,8 @@ def render_signals(scored_df: pd.DataFrame):
         else:
             cols = [symbol_col, "Score", "PortfolioWeightPct", "UnrealizedPLPct"]
             cols = [c for c in cols if c in exit_df.columns]
-            st.dataframe(exit_df[cols], use_container_width=True)
+            styled = style_table(exit_df[cols], highlight_pl_cols=True, highlight_score_col=True)
+            st.dataframe(styled, use_container_width=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
