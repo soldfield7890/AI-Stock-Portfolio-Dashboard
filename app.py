@@ -11,38 +11,38 @@ st.set_page_config(
     layout="wide",
 )
 
-# ----------------- Custom CSS – Glassmorphism / Vision Glass -----------------
+# ----------------- Custom CSS – VisionOS Enhanced Fintech -----------------
 st.markdown(
     """
 <style>
 
 /* Global background & font */
-html, body, [class*="css"]  {
-    background: radial-gradient(circle at top left, #E0ECFF 0%, #F5F7FB 40%, #ECF2FF 100%) !important;
+.stApp {
+    background: radial-gradient(circle at top left, #E4EEFF 0%, #F6F8FC 40%, #EAF1FF 100%) !important;
     color: #0F172A !important;
     font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* Main page container */
 .block-container {
-    padding-top: 1.5rem;
-    padding-bottom: 2.5rem;
+    padding-top: 1.2rem;
+    padding-bottom: 2.2rem;
     max-width: 1400px;
 }
 
 /* Glass card base */
 .glass-card {
-    background: rgba(255, 255, 255, 0.82);
-    border-radius: 22px;
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 20px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.10);
     backdrop-filter: blur(18px);
 }
 
-/* Header card */
+/* Header bar */
 .header-card {
-    padding: 20px 24px;
-    margin-bottom: 18px;
+    padding: 18px 22px;
+    margin-bottom: 14px;
 }
 
 /* Upload card container */
@@ -53,37 +53,38 @@ html, body, [class*="css"]  {
 
 /* KPI metric cards */
 div[data-testid="metric-container"] {
-    background: rgba(255, 255, 255, 0.9) !important;
-    border: 1px solid rgba(148, 163, 184, 0.25) !important;
-    padding: 18px 18px !important;
-    border-radius: 18px !important;
-    box-shadow: 0px 10px 30px rgba(15,23,42,0.12);
+    background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(239,246,255,0.96)) !important;
+    border: 1px solid rgba(148, 163, 184, 0.40) !important;
+    padding: 16px 16px !important;
+    border-radius: 16px !important;
+    box-shadow: 0px 10px 26px rgba(15,23,42,0.18);
 }
 
 /* File uploader as soft glass */
 section[data-testid="stFileUploader"] {
-    background: rgba(255, 255, 255, 0.85) !important;
-    border: 1px dashed rgba(148, 163, 184, 0.6) !important;
-    border-radius: 16px !important;
-    padding: 14px 14px !important;
+    background: rgba(255, 255, 255, 0.94) !important;
+    border: 1px dashed rgba(148, 163, 184, 0.7) !important;
+    border-radius: 14px !important;
+    padding: 12px 14px !important;
 }
 
 /* Headings */
 h1, h2, h3, h4 {
     color: #020617 !important;
     font-weight: 600 !important;
-    letter-spacing: -0.4px;
+    letter-spacing: -0.3px;
 }
 
 /* Tabs styling – pill glass nav */
 div[data-baseweb="tab-list"] {
-    gap: 6px;
-    padding: 6px 4px;
+    gap: 8px;
+    padding: 6px 6px;
     border-radius: 999px;
-    background: rgba(255,255,255,0.45);
-    box-shadow: 0 10px 28px rgba(15,23,42,0.12);
+    background: rgba(255,255,255,0.80);
+    box-shadow: 0 14px 32px rgba(15,23,42,0.18);
     backdrop-filter: blur(18px);
-    border: 1px solid rgba(148, 163, 184, 0.35);
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    margin-bottom: 14px;
 }
 
 button[role="tab"] {
@@ -105,20 +106,20 @@ button[role="tab"][aria-selected="true"] {
 .dataframe table, .stDataFrame table {
     color: #020617 !important;
     background-color: transparent !important;
-    border-radius: 12px !important;
+    border-radius: 10px !important;
 }
 
 thead tr th {
-    background-color: rgba(239, 246, 255, 0.9) !important;
+    background-color: rgba(239, 246, 255, 0.96) !important;
     color: #111827 !important;
     font-weight: 600 !important;
 }
 
 tbody tr:hover td {
-    background-color: rgba(226, 232, 255, 0.8) !important;
+    background-color: rgba(226, 232, 255, 0.9) !important;
 }
 
-/* Small captions */
+/* Small caption text */
 .small-caption {
     font-size: 0.78rem;
     color: #6B7280;
@@ -140,7 +141,7 @@ tbody tr:hover td {
     unsafe_allow_html=True,
 )
 
-# ----------------- Helpers -----------------
+# ----------------- Helper functions -----------------
 def highlight_pl(val):
     """Color gains green and losses red."""
     if pd.isna(val):
@@ -164,11 +165,11 @@ def highlight_score(val):
     except Exception:
         return ""
     if v >= 70:
-        return "background-color: rgba(220, 252, 231, 0.9); color:#14532D;"
+        return "background-color: rgba(220, 252, 231, 0.95); color:#14532D;"
     elif v >= 50:
-        return "background-color: rgba(254, 249, 195, 0.9); color:#78350F;"
+        return "background-color: rgba(254, 249, 195, 0.95); color:#78350F;"
     else:
-        return "background-color: rgba(254, 226, 226, 0.9); color:#7F1D1D;"
+        return "background-color: rgba(254, 226, 226, 0.95); color:#7F1D1D;"
 
 
 def detect_symbol_column(df: pd.DataFrame):
@@ -226,7 +227,7 @@ def render_overview(scored_df: pd.DataFrame):
             )
             fig_score.update_layout(
                 margin=dict(l=10, r=10, t=40, b=10),
-                plot_bgcolor="rgba(255,255,255,0.9)",
+                plot_bgcolor="rgba(255,255,255,0.96)",
                 paper_bgcolor="rgba(255,255,255,0.0)",
             )
             col_a.plotly_chart(fig_score, use_container_width=True)
@@ -266,7 +267,7 @@ def render_overview(scored_df: pd.DataFrame):
             )
             fig_pl.update_layout(
                 margin=dict(l=10, r=10, t=40, b=10),
-                plot_bgcolor="rgba(255,255,255,0.9)",
+                plot_bgcolor="rgba(255,255,255,0.96)",
                 paper_bgcolor="rgba(255,255,255,0.0)",
                 xaxis_title="Ticker",
                 yaxis_title="Unrealized P/L",
@@ -346,7 +347,16 @@ def render_fundamentals(scored_df: pd.DataFrame):
     cols = []
     if symbol_col:
         cols.append(symbol_col)
-    for c in ["PE_TTM", "ForwardPE", "DividendYield", "ProfitMargin", "MarketCap", "Beta", "Score", "Decision"]:
+    for c in [
+        "PE_TTM",
+        "ForwardPE",
+        "DividendYield",
+        "ProfitMargin",
+        "MarketCap",
+        "Beta",
+        "Score",
+        "Decision",
+    ]:
         if c in scored_df.columns and c not in cols:
             cols.append(c)
 
@@ -414,7 +424,14 @@ def render_signals(scored_df: pd.DataFrame):
         if strong_buy.empty:
             st.caption("None at the moment.")
         else:
-            cols = [symbol_col, "Score", "PortfolioWeightPct", "UnrealizedPLPct", "PE_TTM", "ProfitMargin"]
+            cols = [
+                symbol_col,
+                "Score",
+                "PortfolioWeightPct",
+                "UnrealizedPLPct",
+                "PE_TTM",
+                "ProfitMargin",
+            ]
             cols = [c for c in cols if c in strong_buy.columns]
             st.dataframe(strong_buy[cols], use_container_width=True)
 
@@ -423,7 +440,14 @@ def render_signals(scored_df: pd.DataFrame):
         if buy.empty:
             st.caption("None at the moment.")
         else:
-            cols = [symbol_col, "Score", "PortfolioWeightPct", "UnrealizedPLPct", "PE_TTM", "ProfitMargin"]
+            cols = [
+                symbol_col,
+                "Score",
+                "PortfolioWeightPct",
+                "UnrealizedPLPct",
+                "PE_TTM",
+                "ProfitMargin",
+            ]
             cols = [c for c in cols if c in buy.columns]
             st.dataframe(buy[cols], use_container_width=True)
 
@@ -459,10 +483,14 @@ st.markdown(
     <div>
       <h1 style="margin-bottom:4px;">Oldfield AI Stock Dashboard</h1>
       <p style="margin:0; color:#64748B; font-size:0.9rem;">
-        Glass-style financial cockpit for tracking positions, fundamentals, and AI-driven signals.
+        Vision-style financial cockpit for tracking positions, fundamentals, and AI-driven signals.
       </p>
     </div>
-    <div style="min-width:260px;">
+    <div style="min-width:220px; text-align:right;">
+      <span style="font-size:0.8rem; padding:6px 10px; border-radius:999px;
+                   background:rgba(37,99,235,0.08); color:#1D4ED8; border:1px solid rgba(129,140,248,0.6);">
+        v1 • Experimental
+      </span>
     </div>
   </div>
 </div>
