@@ -1,45 +1,61 @@
 import pandas as pd
+import numpy as np
 import yfinance as yf
+
+def safe_get(d: dict, key: str):
+    """Return a value from dict or NaN if missing."""
+    val = d.get(key)
+    return np.nan if val is None else val
 
 def fetch_fundamentals(symbols):
     """
-    Fetch basic fundamentals for a list of ticker symbols using yfinance.
-
-    Returns a DataFrame with one row per symbol and columns like:
-    - PE_TTM
-    - ForwardPE
-    - DividendYield
-    - MarketCap
-    - Beta
-    - ProfitMargin
+    Fetch fundamentals from multiple yfinance sources:
+    - fast_info (best for market cap, beta, last price)
+    - info / get_info (good fallback for PE, dividends, profit margins)
     """
-    symbols = [s for s in pd.Series(symbols).dropna().unique()]
 
+    symbols = [str(s).strip().upper() for s in pd.Series(symbols).dropna().unique()]
     rows = []
-    for sym in symbols:
-        sym = str(sym).strip().upper()
-        if not sym:
-            continue
 
+    for sym in symbols:
         try:
             t = yf.Ticker(sym)
-            info = t.info  # yfinance metadata dict
-        except Exception:
-            info = {}
 
-        rows.append(
-            {
+            # Pull data from multiple APIs
+            fast = t.fast_info if hasattr(t, "fast_info") else {}
+            info = t.info if hasattr(t, "info") else {}
+            try:
+                full_info = t.get_info()
+            except Exception:
+                full_info = {}
+
+            # Merge all sources
+            merged = {}
+            merged.update(fast or {})
+            merged.update(info or {})
+            merged.update(full_info or {})
+
+            row = {
                 "Symbol": sym,
-                "PE_TTM": info.get("trailingPE"),
-                "ForwardPE": info.get("forwardPE"),
-                "DividendYield": info.get("dividendYield"),
-                "MarketCap": info.get("marketCap"),
-                "Beta": info.get("beta"),
-                "ProfitMargin": info.get("profitMargins"),
+                "MarketCap": safe_get(merged, "marketCap") or safe_get(merged, "market_cap"),
+                "PE_TTM": safe_get(merged, "trailingPE"),
+                "ForwardPE": safe_get(merged, "forwardPE"),
+                "DividendYield": safe_get(merged, "dividendYield"),
+                "Beta": safe_get(merged, "beta"),
+                "ProfitMargin": safe_get(merged, "profitMargins"),
             }
-        )
 
-    if not rows:
-        return pd.DataFrame(columns=["Symbol", "PE_TTM", "ForwardPE", "DividendYield", "MarketCap", "Beta", "ProfitMargin"])
+            rows.append(row)
+
+        except Exception:
+            rows.append({
+                "Symbol": sym,
+                "MarketCap": np.nan,
+                "PE_TTM": np.nan,
+                "ForwardPE": np.nan,
+                "DividendYield": np.nan,
+                "Beta": np.nan,
+                "ProfitMargin": np.nan,
+            })
 
     return pd.DataFrame(rows)
