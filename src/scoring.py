@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from .fundamentals import fetch_fundamentals
 
+
 def to_float(series):
     """
     Safely convert a pandas Series to float by removing $, commas,
@@ -17,6 +18,7 @@ def to_float(series):
         .astype(float)
     )
 
+
 def detect_symbol_column(df: pd.DataFrame) -> str | None:
     """
     Try to find the ticker/symbol column by name.
@@ -27,41 +29,112 @@ def detect_symbol_column(df: pd.DataFrame) -> str | None:
             return col
     return None
 
+
 def basic_fundamental_score(row) -> float:
     """
-    Very simple first-pass scoring model (0–100).
+    Simple, explainable first-pass scoring model (0–100).
 
-    - Start at 50
-    - +15 if PE_TTM between 10 and 30
-    - +10 if ProfitMargin > 0
-    - +10 if DividendYield between 1% and 5%
-    - -10 if PE_TTM > 60
-    - Clip between 0 and 100
+    Buckets:
+    - Valuation (PE_TTM)
+    - Profitability (ProfitMargin)
+    - Dividend profile (DividendYield)
+    - Risk profile (Beta)
+    - Size (MarketCap)
     """
-    score = 50
+
+    score = 50.0
 
     pe = row.get("PE_TTM")
     pm = row.get("ProfitMargin")
     dy = row.get("DividendYield")
+    beta = row.get("Beta")
+    mc = row.get("MarketCap")
 
+    # ---- Valuation: PE_TTM ----
     try:
         if pe is not None and not np.isnan(pe):
-            if 10 <= pe <= 30:
-                score += 15
+            if 0 < pe <= 15:
+                score += 15  # cheap / very reasonable
+            elif 15 < pe <= 30:
+                score += 10  # fair
+            elif 30 < pe <= 40:
+                score += 0   # neutral
+            elif 40 < pe <= 60:
+                score -= 10  # getting rich
             elif pe > 60:
-                score -= 10
+                score -= 20  # very expensive / story stock
+    except Exception:
+        pass
+
+    # ---- Profitability: ProfitMargin ----
+    try:
         if pm is not None and not np.isnan(pm):
-            if pm > 0:
+            # profitMargins from yfinance are often in decimal (0.15 = 15%)
+            pm_pct = pm * 100 if pm < 1 else pm
+            if pm_pct > 20:
                 score += 10
+            elif 5 < pm_pct <= 20:
+                score += 5
+            elif 0 < pm_pct <= 5:
+                score += 0
+            else:
+                score -= 10  # negative margins
+    except Exception:
+        pass
+
+    # ---- Dividend: DividendYield ----
+    try:
         if dy is not None and not np.isnan(dy):
-            # yfinance dividendYield is usually in decimal (0.02 = 2%)
             dy_pct = dy * 100 if dy < 1 else dy
             if 1 <= dy_pct <= 5:
-                score += 10
+                score += 5
+            elif dy_pct > 8:
+                score -= 5  # very high yield = risk flag
+    except Exception:
+        pass
+
+    # ---- Risk profile: Beta ----
+    try:
+        if beta is not None and not np.isnan(beta):
+            if 0.7 <= beta <= 1.3:
+                score += 5  # normal volatility
+            elif beta < 0.7:
+                score += 0
+            else:
+                score -= 5  # high beta
+    except Exception:
+        pass
+
+    # ---- Size: MarketCap ----
+    try:
+        if mc is not None and not np.isnan(mc):
+            if mc >= 10_000_000_000:  # > $10B
+                score += 5   # large cap
+            elif mc <= 1_000_000_000:  # < $1B
+                score -= 5   # micro/small, more fragile
     except Exception:
         pass
 
     return float(np.clip(score, 0, 100))
+
+
+def decision_from_score(score: float) -> str:
+    """
+    Map 0–100 score to a simple action label.
+    """
+    if pd.isna(score):
+        return "Watch / Review"
+
+    if score >= 85:
+        return "Strong Buy"
+    if score >= 70:
+        return "Buy"
+    if score >= 55:
+        return "Hold"
+    if score >= 40:
+        return "Trim"
+    return "Exit / Avoid"
+
 
 def score_portfolio(df: pd.DataFrame) -> pd.DataFrame:
     scored = df.copy()
@@ -72,7 +145,10 @@ def score_portfolio(df: pd.DataFrame) -> pd.DataFrame:
 
     for col in scored.columns:
         cl = col.lower()
-        if ("current value" in cl or "market value" in cl or cl == "value") and col_current_value is None:
+        if (
+            ("current value" in cl or "market value" in cl or cl == "value")
+            and col_current_value is None
+        ):
             col_current_value = col
         if "cost basis" in cl or "total cost" in cl or cl == "cost":
             col_cost_basis = col
@@ -102,8 +178,8 @@ def score_portfolio(df: pd.DataFrame) -> pd.DataFrame:
         fundamentals = fetch_fundamentals(scored[symbol_col])
         fundamentals["Symbol"] = fundamentals["Symbol"].astype(str).str.upper()
 
-        # Normalize symbol column for merge
         scored["Symbol_for_merge"] = scored[symbol_col].astype(str).str.upper()
+
         scored = scored.merge(
             fundamentals,
             left_on="Symbol_for_merge",
@@ -117,7 +193,8 @@ def score_portfolio(df: pd.DataFrame) -> pd.DataFrame:
             if col not in scored.columns:
                 scored[col] = np.nan
 
-    # ----- 3) Compute simple score (v0.1) -----
+    # ----- 3) Compute score & decision -----
     scored["Score"] = scored.apply(basic_fundamental_score, axis=1)
+    scored["Decision"] = scored["Score"].apply(decision_from_score)
 
     return scored
