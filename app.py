@@ -284,7 +284,11 @@ def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
     decision_options = ["All"]
     if "Decision" in scored_df.columns:
         decision_options += list(sorted(scored_df["Decision"].dropna().unique()))
-    selected_decision = st.selectbox("Filter by decision", decision_options)
+    selected_decision = st.selectbox(
+        "Filter by decision",
+        decision_options,
+        key="positions_decision_filter",
+    )
 
     filtered_df = scored_df.copy()
     if selected_decision != "All" and "Decision" in filtered_df.columns:
@@ -305,9 +309,14 @@ def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
         "Sort by column",
         options=numeric_cols,
         index=default_sort_index,
+        key="positions_sort_col",
     )
 
-    sort_ascending = st.checkbox("Sort ascending?", value=False)
+    sort_ascending = st.checkbox(
+        "Sort ascending?",
+        value=False,
+        key="positions_sort_ascending",
+    )
 
     scored_sorted = filtered_df.sort_values(by=sort_col, ascending=sort_ascending)
 
@@ -356,8 +365,13 @@ def render_fundamentals(scored_df: pd.DataFrame):
         "Sort by",
         options=numeric_cols if numeric_cols else fundamentals_view.columns,
         index=0,
+        key="fundamentals_sort_col",
     )
-    sort_ascending = st.checkbox("Sort ascending?", value=False)
+    sort_ascending = st.checkbox(
+        "Sort ascending?",
+        value=False,
+        key="fundamentals_sort_ascending",
+    )
 
     fundamentals_view = fundamentals_view.sort_values(by=sort_col, ascending=sort_ascending)
 
@@ -385,8 +399,7 @@ def render_signals(scored_df: pd.DataFrame):
     symbol_col = detect_symbol_column(scored_df)
 
     def subset(decisions):
-        df_sub = scored_df[scored_df["Decision"].isin(decisions)].copy()
-        return df_sub
+        return scored_df[scored_df["Decision"].isin(decisions)].copy()
 
     strong_buy = subset(["Strong Buy"])
     buy = subset(["Buy"])
