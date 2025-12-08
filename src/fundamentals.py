@@ -22,8 +22,8 @@ def fetch_fundamentals(symbols):
             t = yf.Ticker(sym)
 
             # Pull data from multiple APIs
-            fast = t.fast_info if hasattr(t, "fast_info") else {}
-            info = t.info if hasattr(t, "info") else {}
+            fast = getattr(t, "fast_info", {}) or {}
+            info = getattr(t, "info", {}) or {}
             try:
                 full_info = t.get_info()
             except Exception:
@@ -31,9 +31,9 @@ def fetch_fundamentals(symbols):
 
             # Merge all sources
             merged = {}
-            merged.update(fast or {})
-            merged.update(info or {})
-            merged.update(full_info or {})
+            merged.update(fast)
+            merged.update(info)
+            merged.update(full_info)
 
             row = {
                 "Symbol": sym,
