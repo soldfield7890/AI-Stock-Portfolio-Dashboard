@@ -19,26 +19,16 @@ uploaded_file = st.file_uploader("Upload your portfolio CSV", type=["csv"])
 if uploaded_file is not None:
     df = load_csv(uploaded_file)
 
-    # Run scoring / metrics
+    # Run scoring / metrics (this creates CurrentValue_clean, CostBasis_clean, etc.)
     scored_df = score_portfolio(df)
 
     # ----- High-level portfolio metrics -----
     st.subheader("📈 Portfolio Summary")
 
-    total_value = None
-    total_pl = None
-
-    # Try to infer current value column
-    col_current_value = None
-    for col in scored_df.columns:
-        if "current value" in col.lower() or "market value" in col.lower():
-            col_current_value = col
-            break
-
-    if col_current_value is not None and "UnrealizedPL" in scored_df.columns:
-        current_val = scored_df[col_current_value].astype(float)
-        total_value = float(current_val.sum())
-        total_pl = float(scored_df["UnrealizedPL"].astype(float).sum())
+    if "CurrentValue_clean" in scored_df.columns and "UnrealizedPL" in scored_df.columns:
+        current_val = scored_df["CurrentValue_clean"]
+        total_value = float(current_val.sum()) if len(current_val) else 0.0
+        total_pl = float(scored_df["UnrealizedPL"].sum())
         num_positions = len(scored_df)
 
         col1, col2, col3 = st.columns(3)
@@ -46,7 +36,10 @@ if uploaded_file is not None:
         col2.metric("Total Unrealized P/L", f"${total_pl:,.0f}")
         col3.metric("Number of Positions", num_positions)
     else:
-        st.info("Could not detect value columns to compute summary metrics. Check your CSV headers.")
+        st.info(
+            "Could not detect cleaned value columns (CurrentValue_clean / UnrealizedPL). "
+            "Check scoring.py or your CSV headers."
+        )
 
     # ----- Raw data -----
     st.subheader("📌 Raw Portfolio Data")
@@ -55,11 +48,18 @@ if uploaded_file is not None:
     # ----- Scored / metrics view -----
     st.subheader("📊 Portfolio Metrics & Score (v1 placeholder)")
 
-    # Let you sort by Score, P/L %, etc.
+    # Choose a column to sort by – prefer numeric ones
+    numeric_cols = [
+        c for c in scored_df.columns
+        if pd.api.types.is_numeric_dtype(scored_df[c])
+    ]
+    if not numeric_cols:
+        numeric_cols = list(scored_df.columns)
+
     sort_col = st.selectbox(
         "Sort by column",
-        options=[c for c in scored_df.columns if scored_df[c].dtype != "object"],
-        index=len(scored_df.columns) - 1,  # default to last, usually Score
+        options=numeric_cols,
+        index=numeric_cols.index("Score") if "Score" in numeric_cols else 0,
     )
 
     sort_ascending = st.checkbox("Sort ascending?", value=False)
