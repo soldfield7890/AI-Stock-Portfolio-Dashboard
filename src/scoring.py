@@ -1,49 +1,58 @@
 import pandas as pd
+import numpy as np
+
+def to_float(series):
+    """
+    Safely convert a pandas Series to float by removing $, commas,
+    percent signs, and handling blanks.
+    """
+    return (
+        series.astype(str)
+        .str.replace("$", "", regex=False)
+        .str.replace(",", "", regex=False)
+        .str.replace("%", "", regex=False)
+        .str.strip()
+        .replace({"": np.nan, "nan": np.nan, None: np.nan})
+        .astype(float)
+    )
 
 def score_portfolio(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Basic portfolio metrics.
-
-    Adds:
-    - UnrealizedPL: Current Value - Cost Basis Total
-    - UnrealizedPLPct: UnrealizedPL / Cost Basis Total
-    - PortfolioWeightPct: Current Value / portfolio total value
-    - Score: placeholder for future Everything Money / AI model
-    """
     scored = df.copy()
 
-    # Try to find the relevant columns by name
-    # Adjust these strings if your CSV uses slightly different headers
+    # Detect columns
     col_current_value = None
     col_cost_basis = None
 
     for col in scored.columns:
-        col_lower = col.lower()
-        if "current value" in col_lower or "market value" in col_lower:
+        cl = col.lower()
+        if "current value" in cl or "market value" in cl or "value" in cl:
             col_current_value = col
-        if "cost basis total" in col_lower or "total cost" in col_lower:
+        if "cost basis" in cl or "total cost" in cl or "cost" in cl:
             col_cost_basis = col
 
-    # Only add metrics if we found the needed columns
-    if col_current_value is not None and col_cost_basis is not None:
-        current_val = scored[col_current_value].astype(float)
-        cost_basis = scored[col_cost_basis].astype(float)
+    # If we have both value + cost, compute metrics
+    if col_current_value and col_cost_basis:
+
+        # Clean numeric columns
+        current_val = to_float(scored[col_current_value])
+        cost_basis = to_float(scored[col_cost_basis])
+
+        scored["CurrentValue_clean"] = current_val
+        scored["CostBasis_clean"] = cost_basis
 
         scored["UnrealizedPL"] = current_val - cost_basis
-        scored["UnrealizedPLPct"] = scored["UnrealizedPL"] / cost_basis.replace(0, pd.NA)
+        scored["UnrealizedPLPct"] = scored["UnrealizedPL"] / cost_basis.replace(0, np.nan)
 
+        # Portfolio weight
         total_value = current_val.sum()
-        if total_value != 0:
-            scored["PortfolioWeightPct"] = current_val / total_value * 100
-        else:
-            scored["PortfolioWeightPct"] = 0.0
-    else:
-        # If we can't find the columns, just fill defaults so the app doesn't crash
-        scored["UnrealizedPL"] = pd.NA
-        scored["UnrealizedPLPct"] = pd.NA
-        scored["PortfolioWeightPct"] = pd.NA
+        scored["PortfolioWeightPct"] = (current_val / total_value) * 100 if total_value else np.nan
 
-    # Placeholder score for now – we will replace this with the real model
+    else:
+        scored["UnrealizedPL"] = np.nan
+        scored["UnrealizedPLPct"] = np.nan
+        scored["PortfolioWeightPct"] = np.nan
+
+    # Placeholder score
     scored["Score"] = 50
 
     return scored
