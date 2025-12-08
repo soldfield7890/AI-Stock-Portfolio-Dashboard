@@ -19,7 +19,7 @@ def to_float(series):
     )
 
 
-def detect_symbol_column(df: pd.DataFrame) -> str | None:
+def detect_symbol_column(df: pd.DataFrame):
     """
     Try to find the ticker/symbol column by name.
     """
@@ -54,22 +54,21 @@ def basic_fundamental_score(row) -> float:
     try:
         if pe is not None and not np.isnan(pe):
             if 0 < pe <= 15:
-                score += 15  # cheap / very reasonable
+                score += 15
             elif 15 < pe <= 30:
-                score += 10  # fair
+                score += 10
             elif 30 < pe <= 40:
-                score += 0   # neutral
+                score += 0
             elif 40 < pe <= 60:
-                score -= 10  # getting rich
+                score -= 10
             elif pe > 60:
-                score -= 20  # very expensive / story stock
+                score -= 20
     except Exception:
         pass
 
     # ---- Profitability: ProfitMargin ----
     try:
         if pm is not None and not np.isnan(pm):
-            # profitMargins from yfinance are often in decimal (0.15 = 15%)
             pm_pct = pm * 100 if pm < 1 else pm
             if pm_pct > 20:
                 score += 10
@@ -78,7 +77,7 @@ def basic_fundamental_score(row) -> float:
             elif 0 < pm_pct <= 5:
                 score += 0
             else:
-                score -= 10  # negative margins
+                score -= 10
     except Exception:
         pass
 
@@ -89,7 +88,7 @@ def basic_fundamental_score(row) -> float:
             if 1 <= dy_pct <= 5:
                 score += 5
             elif dy_pct > 8:
-                score -= 5  # very high yield = risk flag
+                score -= 5
     except Exception:
         pass
 
@@ -97,21 +96,21 @@ def basic_fundamental_score(row) -> float:
     try:
         if beta is not None and not np.isnan(beta):
             if 0.7 <= beta <= 1.3:
-                score += 5  # normal volatility
+                score += 5
             elif beta < 0.7:
                 score += 0
             else:
-                score -= 5  # high beta
+                score -= 5
     except Exception:
         pass
 
     # ---- Size: MarketCap ----
     try:
         if mc is not None and not np.isnan(mc):
-            if mc >= 10_000_000_000:  # > $10B
-                score += 5   # large cap
-            elif mc <= 1_000_000_000:  # < $1B
-                score -= 5   # micro/small, more fragile
+            if mc >= 10_000_000_000:
+                score += 5
+            elif mc <= 1_000_000_000:
+                score -= 5
     except Exception:
         pass
 
@@ -188,7 +187,6 @@ def score_portfolio(df: pd.DataFrame) -> pd.DataFrame:
             suffixes=("", "_fund"),
         )
     else:
-        # Ensure columns exist even if we couldn't fetch fundamentals
         for col in ["PE_TTM", "ForwardPE", "DividendYield", "MarketCap", "Beta", "ProfitMargin"]:
             if col not in scored.columns:
                 scored[col] = np.nan
