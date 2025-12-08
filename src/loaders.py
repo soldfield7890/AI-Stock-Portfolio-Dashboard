@@ -1,7 +1,9 @@
 import pandas as pd
 
 def load_csv(uploaded_file):
-    """Load user-uploaded CSV into a clean DataFrame."""
+    """
+    Load user-uploaded CSV into a clean DataFrame.
+    """
     try:
         df = pd.read_csv(uploaded_file)
         return df
