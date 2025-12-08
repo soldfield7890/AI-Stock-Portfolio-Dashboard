@@ -12,7 +12,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# ----------------- Custom CSS – VisionOS Enhanced Fintech -----------------
+# ----------------- Custom CSS – Liquid Glass Fintech -----------------
 st.markdown(
     """
 <style>
@@ -33,20 +33,20 @@ st.markdown(
 
 /* Glass card base */
 .glass-card {
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.96);
     border-radius: 20px;
     border: 1px solid rgba(148, 163, 184, 0.35);
     box-shadow: 0 18px 40px rgba(15, 23, 42, 0.10);
     backdrop-filter: blur(18px);
 }
 
-/* Header bar */
+/* Header card */
 .header-card {
     padding: 18px 22px;
     margin-bottom: 10px;
 }
 
-/* Upload card container */
+/* Upload card */
 .upload-card {
     padding: 12px 16px;
     margin-bottom: 16px;
@@ -83,12 +83,12 @@ h1, h2, h3, h4 {
     letter-spacing: -0.3px;
 }
 
-/* Tabs styling – pill glass nav */
+/* Tabs – pill glass nav */
 div[data-baseweb="tab-list"] {
     gap: 8px;
     padding: 6px 6px;
     border-radius: 999px;
-    background: rgba(255,255,255,0.92);
+    background: rgba(255,255,255,0.95);
     box-shadow: 0 14px 32px rgba(15,23,42,0.16);
     backdrop-filter: blur(18px);
     border: 1px solid rgba(148, 163, 184, 0.45);
@@ -110,38 +110,76 @@ button[role="tab"][aria-selected="true"] {
     border-color: transparent !important;
 }
 
-/* Dataframes – light fintech table style */
-.dataframe table, .stDataFrame table {
-    color: #020617 !important;
-    background-color: transparent !important;
-    border-radius: 10px !important;
+/* Light, modern select + checkbox styling */
+.stSelectbox > div > div {
+    background-color: #11182700 !important;
 }
 
-thead tr th {
-    background-color: #EEF2FF !important;
-    color: #111827 !important;
-    font-weight: 600 !important;
+.stApp div[data-baseweb="select"] > div {
+    background-color: #111827 !important;
 }
 
-tbody tr td {
-    background-color: #FFFFFF !important;
-    color: #111827 !important;
-    border-color: #E5E7EB !important;
-    font-size: 0.86rem !important;
+/* Wrap the select in a glass pill */
+.stApp .css-1n543e5, .stApp .stSelectbox {
+    color: #F9FAFB !important;
 }
 
-tbody tr:nth-child(even) td {
-    background-color: #F9FAFB !important;
-}
-
-tbody tr:hover td {
-    background-color: #E5EDFF !important;
+/* Labels */
+.stApp label {
+    color: #6B7280 !important;
+    font-size: 0.8rem;
 }
 
 /* Small caption text */
 .small-caption {
     font-size: 0.78rem;
     color: #6B7280;
+}
+
+/* Custom table styling */
+.table-wrapper {
+    overflow-x: auto;
+}
+
+.custom-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.86rem;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 28px rgba(15,23,42,0.12);
+}
+
+.custom-table thead tr {
+    background-color: #EEF2FF;
+}
+
+.custom-table thead th {
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+    color: #111827;
+    border-bottom: 1px solid #E5E7EB;
+    white-space: nowrap;
+}
+
+.custom-table tbody tr:nth-child(odd) {
+    background-color: #FFFFFF;
+}
+
+.custom-table tbody tr:nth-child(even) {
+    background-color: #F9FAFB;
+}
+
+.custom-table tbody td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #E5E7EB;
+    color: #111827;
+    white-space: nowrap;
+}
+
+.custom-table tbody tr:hover td {
+    background-color: #E0ECFF;
 }
 
 /* Positive / negative helpers */
@@ -155,6 +193,7 @@ tbody tr:hover td {
     font-weight: 600;
 }
 
+/* Score highlight backgrounds – applied inline from Styler */
 </style>
 """,
     unsafe_allow_html=True,
@@ -199,15 +238,13 @@ def detect_symbol_column(df: pd.DataFrame):
     return None
 
 
-# --- Formatting helpers for tables ---
+# --- Formatting helpers ---
 def fmt_percent(val, decimals=1):
     if pd.isna(val):
         return ""
     try:
         v = float(val)
     except Exception:
-        return ""
-    if v < -10_000 or v > 10_000:
         return ""
     return f"{v:.{decimals}f}%"
 
@@ -263,7 +300,7 @@ def fmt_number(val, decimals=2):
 
 
 def style_table(df: pd.DataFrame, highlight_pl_cols=False, highlight_score_col=False):
-    """Apply consistent formatting and highlighting to any table."""
+    """Apply consistent formatting and highlighting to any DataFrame."""
     format_dict = {}
 
     for col in df.columns:
@@ -300,7 +337,17 @@ def style_table(df: pd.DataFrame, highlight_pl_cols=False, highlight_score_col=F
     if highlight_score_col and "Score" in df.columns:
         styler = styler.applymap(highlight_score, subset=["Score"])
 
+    # Attach our custom CSS class for the table
+    styler = styler.set_table_attributes('class="custom-table"')
+
     return styler
+
+
+def render_html_table(styler: pd.io.formats.style.Styler):
+    """Render Styler as HTML inside a scrollable, glass-friendly wrapper."""
+    html = styler.to_html()
+    wrapped = f'<div class="table-wrapper">{html}</div>'
+    st.markdown(wrapped, unsafe_allow_html=True)
 
 
 # ----------------- Page renderers -----------------
@@ -348,10 +395,12 @@ def render_overview(scored_df: pd.DataFrame):
                 nbins=20,
                 title="Score Distribution",
             )
+            fig_score.update_traces(marker=dict(line=dict(width=0)))
             fig_score.update_layout(
                 margin=dict(l=10, r=10, t=40, b=10),
                 plot_bgcolor="rgba(255,255,255,0.96)",
                 paper_bgcolor="rgba(255,255,255,0.0)",
+                font=dict(size=12, color="#0F172A"),
             )
             col_a.plotly_chart(fig_score, use_container_width=True)
 
@@ -373,6 +422,7 @@ def render_overview(scored_df: pd.DataFrame):
             fig_alloc.update_layout(
                 margin=dict(l=10, r=10, t=40, b=10),
                 paper_bgcolor="rgba(255,255,255,0.0)",
+                font=dict(size=12, color="#0F172A"),
             )
             col_b.plotly_chart(fig_alloc, use_container_width=True)
 
@@ -394,6 +444,7 @@ def render_overview(scored_df: pd.DataFrame):
                 paper_bgcolor="rgba(255,255,255,0.0)",
                 xaxis_title="Ticker",
                 yaxis_title="Unrealized P/L",
+                font=dict(size=12, color="#0F172A"),
             )
             st.plotly_chart(fig_pl, use_container_width=True)
 
@@ -444,9 +495,9 @@ def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
 
     scored_sorted = filtered_df.sort_values(by=sort_col, ascending=sort_ascending)
 
-    styled = style_table(scored_sorted, highlight_pl_cols=True, highlight_score_col=True)
+    styler = style_table(scored_sorted, highlight_pl_cols=True, highlight_score_col=True)
+    render_html_table(styler)
 
-    st.dataframe(styled, use_container_width=True)
     st.markdown(
         '<p class="small-caption">Use filters and sorting to focus on the positions that matter most.</p>',
         unsafe_allow_html=True,
@@ -501,9 +552,9 @@ def render_fundamentals(scored_df: pd.DataFrame):
 
     fundamentals_view = fundamentals_view.sort_values(by=sort_col, ascending=sort_ascending)
 
-    styled = style_table(fundamentals_view, highlight_pl_cols=False, highlight_score_col=True)
+    styler = style_table(fundamentals_view, highlight_pl_cols=False, highlight_score_col=True)
+    render_html_table(styler)
 
-    st.dataframe(styled, use_container_width=True)
     st.markdown(
         '<p class="small-caption">Screen for valuation, profitability, risk, and your composite score.</p>',
         unsafe_allow_html=True,
@@ -547,8 +598,8 @@ def render_signals(scored_df: pd.DataFrame):
                 "ProfitMargin",
             ]
             cols = [c for c in cols if c in strong_buy.columns]
-            styled = style_table(strong_buy[cols], highlight_pl_cols=True, highlight_score_col=True)
-            st.dataframe(styled, use_container_width=True)
+            styler = style_table(strong_buy[cols], highlight_pl_cols=True, highlight_score_col=True)
+            render_html_table(styler)
 
     with col2:
         st.markdown("**Buy**")
@@ -564,8 +615,8 @@ def render_signals(scored_df: pd.DataFrame):
                 "ProfitMargin",
             ]
             cols = [c for c in cols if c in buy.columns]
-            styled = style_table(buy[cols], highlight_pl_cols=True, highlight_score_col=True)
-            st.dataframe(styled, use_container_width=True)
+            styler = style_table(buy[cols], highlight_pl_cols=True, highlight_score_col=True)
+            render_html_table(styler)
 
     st.markdown("#### De-Risk Radar")
     col3, col4 = st.columns(2)
@@ -577,8 +628,8 @@ def render_signals(scored_df: pd.DataFrame):
         else:
             cols = [symbol_col, "Score", "PortfolioWeightPct", "UnrealizedPLPct"]
             cols = [c for c in cols if c in trim.columns]
-            styled = style_table(trim[cols], highlight_pl_cols=True, highlight_score_col=True)
-            st.dataframe(styled, use_container_width=True)
+            styler = style_table(trim[cols], highlight_pl_cols=True, highlight_score_col=True)
+            render_html_table(styler)
 
     with col4:
         st.markdown("**Exit / Avoid**")
@@ -587,8 +638,8 @@ def render_signals(scored_df: pd.DataFrame):
         else:
             cols = [symbol_col, "Score", "PortfolioWeightPct", "UnrealizedPLPct"]
             cols = [c for c in cols if c in exit_df.columns]
-            styled = style_table(exit_df[cols], highlight_pl_cols=True, highlight_score_col=True)
-            st.dataframe(styled, use_container_width=True)
+            styler = style_table(exit_df[cols], highlight_pl_cols=True, highlight_score_col=True)
+            render_html_table(styler)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -601,7 +652,7 @@ st.markdown(
     <div>
       <h1 style="margin-bottom:4px;">Oldfield AI Stock Dashboard</h1>
       <p style="margin:0; color:#64748B; font-size:0.9rem;">
-        Vision-style financial cockpit for tracking positions, fundamentals, and AI-driven signals.
+        Liquid-glass financial cockpit for tracking positions, fundamentals, and AI-driven signals.
       </p>
     </div>
     <div style="min-width:220px; text-align:right;">
