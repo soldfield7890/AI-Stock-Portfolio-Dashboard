@@ -14,14 +14,12 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-/* Overall app background & font */
 .stApp {
     background-color: #0d1117;
     color: #e6edf3;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-/* Headings */
 h1, h2, h3 {
     letter-spacing: -0.5px;
     font-weight: 600;
@@ -35,7 +33,6 @@ div[data-testid="metric-container"] {
     border-radius: 12px;
 }
 
-/* Upload widget container tweaks */
 section[data-testid="stFileUploader"] {
     background-color: #161b22;
     border-radius: 12px;
@@ -43,14 +40,12 @@ section[data-testid="stFileUploader"] {
     border: 1px solid #30363d;
 }
 
-/* Make the page content a bit wider / centered */
 .block-container {
     padding-top: 1.5rem;
     padding-bottom: 2rem;
     max-width: 1400px;
 }
 
-/* Dataframe table base styles */
 .dataframe table,
 .stDataFrame table {
     background-color: #0d1117 !important;
@@ -67,7 +62,7 @@ st.title("Oldfield Investing – AI Stock Dashboard (v1)")
 st.write(
     """
 Upload your portfolio CSV to see position-level metrics, portfolio P/L, and a
-first-pass fundamentals-based score for each holding.
+first-pass fundamentals-based score and action label for each holding.
 """
 )
 
@@ -78,7 +73,7 @@ if uploaded_file is not None:
     # Load raw data
     df = load_csv(uploaded_file)
 
-    # Run scoring / metrics (adds cleaned value columns + fundamentals + Score)
+    # Run scoring / metrics (adds cleaned value columns + fundamentals + Score + Decision)
     scored_df = score_portfolio(df)
 
     # ----------------- Portfolio Summary KPIs -----------------
@@ -92,14 +87,11 @@ if uploaded_file is not None:
 
         col1, col2, col3 = st.columns(3)
 
-        # Total portfolio value
         col1.metric("Total Portfolio Value", f"${total_value:,.0f}")
 
-        # P/L metric with sign-aware formatting
         pl_label = f"${total_pl:,.0f}"
         col2.metric("Total Unrealized P/L", pl_label)
 
-        # Number of positions
         col3.metric("Number of Positions", int(num_positions))
     else:
         st.info(
@@ -107,21 +99,44 @@ if uploaded_file is not None:
             "Check scoring.py or your CSV headers."
         )
 
+    # ----------------- Decision breakdown -----------------
+    if "Decision" in scored_df.columns:
+        st.subheader("🧭 Action Summary (Based on Score)")
+
+        decision_counts = scored_df["Decision"].value_counts().to_dict()
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Strong Buy", decision_counts.get("Strong Buy", 0))
+        c2.metric("Buy", decision_counts.get("Buy", 0))
+        c3.metric("Hold", decision_counts.get("Hold", 0))
+        c4.metric("Trim", decision_counts.get("Trim", 0))
+        c5.metric("Exit / Avoid", decision_counts.get("Exit / Avoid", 0))
+
     # ----------------- Raw Data -----------------
     st.subheader("📌 Raw Portfolio Data")
     st.dataframe(df, use_container_width=True)
 
     # ----------------- Portfolio Metrics & Score -----------------
-    st.subheader("📊 Portfolio Metrics & Score")
+    st.subheader("📊 Portfolio Metrics, Score & Action")
+
+    # Decision filter
+    decision_options = ["All"]
+    if "Decision" in scored_df.columns:
+        decision_options += list(sorted(scored_df["Decision"].dropna().unique()))
+    selected_decision = st.selectbox("Filter by decision", decision_options)
+
+    filtered_df = scored_df.copy()
+    if selected_decision != "All" and "Decision" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["Decision"] == selected_decision]
 
     # Helper: choose numeric columns for sorting
     numeric_cols = [
         c
-        for c in scored_df.columns
-        if pd.api.types.is_numeric_dtype(scored_df[c])
+        for c in filtered_df.columns
+        if pd.api.types.is_numeric_dtype(filtered_df[c])
     ]
     if not numeric_cols:
-        numeric_cols = list(scored_df.columns)
+        numeric_cols = list(filtered_df.columns)
 
     default_sort_index = 0
     if "Score" in numeric_cols:
@@ -135,7 +150,7 @@ if uploaded_file is not None:
 
     sort_ascending = st.checkbox("Sort ascending?", value=False)
 
-    scored_sorted = scored_df.sort_values(by=sort_col, ascending=sort_ascending)
+    scored_sorted = filtered_df.sort_values(by=sort_col, ascending=sort_ascending)
 
     # ----------------- Styling functions -----------------
     def highlight_pl(val):
