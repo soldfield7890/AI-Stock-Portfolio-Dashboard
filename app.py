@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
+
 
 from src.scoring import score_portfolio
 from src.loaders import load_csv
@@ -460,125 +462,252 @@ def render_ai_glance_card(ai_view: dict):
 
 # ----------------- Tab renderers -----------------
 def render_overview(scored_df: pd.DataFrame):
-    st.subheader("Portfolio Overview")
-
     metrics = compute_overview_analytics(scored_df)
+    symbol_col = detect_symbol_column(scored_df)
 
-    # KPI row
-    c1, c2, c3 = st.columns(3)
-    c1.metric(
-        "Total Portfolio Value",
-        fmt_currency(metrics["total_value"], 0) if metrics["total_value"] is not None else "—",
+    # ---------- TOP: Glass summary band (KPIs + Health gauge) ----------
+    st.markdown(
+        '<div class="glass-card" style="padding:18px 22px; margin-top:4px; margin-bottom:18px;">',
+        unsafe_allow_html=True,
     )
-    c2.metric(
-        "Total Unrealized P/L",
-        fmt_currency(metrics["total_pl"], 0) if metrics["total_pl"] is not None else "—",
-    )
-    c3.metric("Positions", len(scored_df))
 
-    # Score metrics
-    if metrics["avg_score"] is not None:
-        c4, c5, c6 = st.columns(3)
-        c4.metric("Average Score", f"{metrics['avg_score']:.1f}")
-        if metrics["weighted_score"] is not None:
-            c5.metric("Value-Weighted Score", f"{metrics['weighted_score']:.1f}")
-        if "PortfolioWeightPct" in scored_df.columns:
-            top_weight = scored_df.sort_values("PortfolioWeightPct", ascending=False).head(1)
-            symbol_col = detect_symbol_column(scored_df)
-            if not top_weight.empty and symbol_col:
-                row = top_weight.iloc[0]
-                c6.metric(
-                    "Largest Position",
-                    f"{row[symbol_col]}",
-                    help=f"{fmt_percent(row['PortfolioWeightPct'], 2)} of portfolio",
+    top_left, top_right = st.columns([2, 1.1])
+
+    # Left side – KPI tiles
+    with top_left:
+        st.markdown(
+            """
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div style="font-size:0.9rem; color:#6B7280;">Portfolio Snapshot</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        k1, k2, k3, k4 = st.columns(4)
+
+        k1.metric(
+            "Total Portfolio Value",
+            fmt_currency(metrics["total_value"], 0) if metrics["total_value"] is not None else "—",
+        )
+        k2.metric(
+            "Total Unrealized P/L",
+            fmt_currency(metrics["total_pl"], 0) if metrics["total_pl"] is not None else "—",
+        )
+        k3.metric("Positions", len(scored_df))
+        if metrics["avg_score"] is not None:
+            k4.metric("Avg Score", f"{metrics['avg_score']:.1f}")
+        else:
+            k4.metric("Avg Score", "—")
+
+        # Second KPI row: weighted score + mix
+        c1, c2, c3, c4 = st.columns(4)
+        if metrics.get("weighted_score") is not None:
+            c1.metric("Value-Weighted Score", f"{metrics['weighted_score']:.1f}")
+        else:
+            c1.metric("Value-Weighted Score", "—")
+
+        buckets = metrics.get("score_buckets", {})
+        c2.metric("Speculative (<40)", buckets.get("Speculative (<40)", 0))
+        c3.metric("Middle (40–59)", buckets.get("Middle (40–59)", 0))
+        c4.metric("Core (60+)", buckets.get("Core (60+)", 0))
+
+    # Right side – Health gauge
+    with top_right:
+        base_score = metrics.get("weighted_score") or metrics.get("avg_score")
+        if base_score is not None:
+            fig_gauge = go.Figure(
+                go.Indicator(
+                    mode="gauge+number",
+                    value=base_score,
+                    number={"suffix": " / 100", "font": {"size": 22, "color": "#0F172A"}},
+                    title={"text": "Portfolio Health", "font": {"size": 14, "color": "#4B5563"}},
+                    gauge={
+                        "axis": {"range": [0, 100]},
+                        "bar": {"color": "#2563EB"},
+                        "bgcolor": "rgba(241,245,249,0.9)",
+                        "borderwidth": 0,
+                        "steps": [
+                            {"range": [0, 40], "color": "rgba(248,113,113,0.45)"},
+                            {"range": [40, 60], "color": "rgba(234,179,8,0.45)"},
+                            {"range": [60, 100], "color": "rgba(34,197,94,0.45)"},
+                        ],
+                    },
                 )
+            )
+            fig_gauge.update_layout(
+                margin=dict(l=10, r=10, t=40, b=0),
+                paper_bgcolor="rgba(255,255,255,0.0)",
+            )
+            st.plotly_chart(fig_gauge, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.caption("Portfolio health gauge will appear once scores are available.")
 
-    # Score buckets
-    buckets = metrics.get("score_buckets", {})
-    if buckets:
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ---------- MIDDLE: Score mix + Action summary tiles ----------
+    st.markdown(
+        '<div class="glass-card" style="padding:18px 22px; margin-bottom:18px;">',
+        unsafe_allow_html=True,
+    )
+
+    m1, m2 = st.columns(2)
+
+    # Score mix as mini bar chart
+    with m1:
         st.markdown("#### Score Mix")
-        b1, b2, b3 = st.columns(3)
-        b1.metric("Speculative (<40)", buckets.get("Speculative (<40)", 0))
-        b2.metric("Middle (40–59)", buckets.get("Middle (40–59)", 0))
-        b3.metric("Core (60+)", buckets.get("Core (60+)", 0))
+        buckets = metrics.get("score_buckets", {})
+        if buckets:
+            mix_df = pd.DataFrame(
+                {
+                    "Bucket": list(buckets.keys()),
+                    "Count": list(buckets.values()),
+                }
+            )
+            fig_mix = px.bar(
+                mix_df,
+                x="Bucket",
+                y="Count",
+                text="Count",
+                title="",
+            )
+            fig_mix.update_traces(textposition="outside")
+            fig_mix.update_layout(
+                margin=dict(l=0, r=0, t=10, b=0),
+                plot_bgcolor="rgba(255,255,255,0.96)",
+                paper_bgcolor="rgba(255,255,255,0.0)",
+                font=dict(size=11, color="#0F172A"),
+            )
+            st.plotly_chart(fig_mix, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.caption("Scores not available yet.")
 
-    st.markdown("---")
+    # Action summary (Strong buy / buy / hold / trim / exit)
+    with m2:
+        st.markdown("#### Action Summary")
+        if "Decision" in scored_df.columns:
+            decision_counts = scored_df["Decision"].value_counts().to_dict()
+            r1, r2, r3, r4, r5 = st.columns(5)
+            r1.metric("Strong Buy", decision_counts.get("Strong Buy", 0))
+            r2.metric("Buy", decision_counts.get("Buy", 0))
+            r3.metric("Hold", decision_counts.get("Hold", 0))
+            r4.metric("Trim", decision_counts.get("Trim", 0))
+            r5.metric("Exit / Avoid", decision_counts.get("Exit / Avoid", 0))
+        else:
+            st.caption("No decision column in data – scoring step may need adjustment.")
 
-    # Charts row
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ---------- LOWER: Key charts row ----------
+    st.markdown(
+        '<div class="glass-card" style="padding:18px 22px; margin-bottom:18px;">',
+        unsafe_allow_html=True,
+    )
     st.markdown("#### Key Charts")
+
     col_a, col_b = st.columns(2)
 
     # Score distribution
-    if "Score" in scored_df.columns:
-        score_series = scored_df["Score"].dropna()
-        if not score_series.empty:
-            fig_score = px.histogram(score_series, nbins=15, title="Score Distribution")
-            fig_score.update_traces(marker=dict(line=dict(width=0)))
-            fig_score.update_layout(
-                margin=dict(l=10, r=10, t=40, b=10),
-                plot_bgcolor="rgba(255,255,255,0.96)",
-                paper_bgcolor="rgba(255,255,255,0.0)",
-                font=dict(size=12, color="#0F172A"),
-            )
-            col_a.plotly_chart(fig_score, use_container_width=True)
+    with col_a:
+        if "Score" in scored_df.columns:
+            score_series = scored_df["Score"].dropna()
+            if not score_series.empty:
+                fig_score = px.histogram(score_series, nbins=15, title="Score Distribution")
+                fig_score.update_traces(marker=dict(line=dict(width=0)))
+                fig_score.update_layout(
+                    margin=dict(l=0, r=0, t=30, b=0),
+                    plot_bgcolor="rgba(255,255,255,0.96)",
+                    paper_bgcolor="rgba(255,255,255,0.0)",
+                    font=dict(size=11, color="#0F172A"),
+                )
+                st.plotly_chart(fig_score, use_container_width=True, config={"displayModeBar": False})
+            else:
+                st.caption("No scores available.")
+        else:
+            st.caption("No scores available.")
 
     # Allocation by decision
-    if "PortfolioWeightPct" in scored_df.columns and "Decision" in scored_df.columns:
-        alloc = (
-            scored_df.dropna(subset=["PortfolioWeightPct"])
-            .groupby("Decision")["PortfolioWeightPct"]
-            .sum()
-            .reset_index()
-        )
-        if not alloc.empty:
-            fig_alloc = px.pie(
-                alloc,
-                values="PortfolioWeightPct",
-                names="Decision",
-                title="Allocation by Decision",
+    with col_b:
+        if "PortfolioWeightPct" in scored_df.columns and "Decision" in scored_df.columns:
+            alloc = (
+                scored_df.dropna(subset=["PortfolioWeightPct"])
+                .groupby("Decision")["PortfolioWeightPct"]
+                .sum()
+                .reset_index()
             )
-            fig_alloc.update_layout(
-                margin=dict(l=10, r=10, t=40, b=10),
-                paper_bgcolor="rgba(255,255,255,0.0)",
-                font=dict(size=12, color="#0F172A"),
-            )
-            col_b.plotly_chart(fig_alloc, use_container_width=True)
+            if not alloc.empty:
+                fig_alloc = px.pie(
+                    alloc,
+                    values="PortfolioWeightPct",
+                    names="Decision",
+                    title="Allocation by Decision",
+                )
+                fig_alloc.update_layout(
+                    margin=dict(l=0, r=0, t=30, b=0),
+                    paper_bgcolor="rgba(255,255,255,0.0)",
+                    font=dict(size=11, color="#0F172A"),
+                )
+                st.plotly_chart(fig_alloc, use_container_width=True, config={"displayModeBar": False})
+            else:
+                st.caption("No allocation data.")
+        else:
+            st.caption("No allocation data.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ---------- BOTTOM: Unrealized P/L focus & Top movers ----------
+    st.markdown(
+        '<div class="glass-card" style="padding:18px 22px; margin-bottom:8px;">',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("#### Unrealized P/L & Today’s Focus")
+
+    u1, u2 = st.columns([2, 1])
 
     # Unrealized P/L by ticker
-    st.markdown("#### Unrealized P/L by Position")
-    symbol_col = detect_symbol_column(scored_df)
-    if symbol_col and "UnrealizedPL" in scored_df.columns:
-        pl_df = scored_df[[symbol_col, "UnrealizedPL"]].copy().dropna(subset=["UnrealizedPL"])
-        if not pl_df.empty:
-            fig_pl = px.bar(pl_df, x=symbol_col, y="UnrealizedPL", title="Unrealized P/L by Ticker")
-            fig_pl.update_layout(
-                margin=dict(l=10, r=10, t=40, b=10),
-                plot_bgcolor="rgba(255,255,255,0.96)",
-                paper_bgcolor="rgba(255,255,255,0.0)",
-                xaxis_title="Ticker",
-                yaxis_title="Unrealized P/L",
-                font=dict(size=12, color="#0F172A"),
-            )
-            st.plotly_chart(fig_pl, use_container_width=True)
+    with u1:
+        if symbol_col and "UnrealizedPL" in scored_df.columns:
+            pl_df = scored_df[[symbol_col, "UnrealizedPL"]].copy().dropna(subset=["UnrealizedPL"])
+            if not pl_df.empty:
+                fig_pl = px.bar(pl_df, x=symbol_col, y="UnrealizedPL", title="Unrealized P/L by Ticker")
+                fig_pl.update_layout(
+                    margin=dict(l=0, r=0, t=30, b=0),
+                    plot_bgcolor="rgba(255,255,255,0.96)",
+                    paper_bgcolor="rgba(255,255,255,0.0)",
+                    xaxis_title="",
+                    yaxis_title="Unrealized P/L",
+                    font=dict(size=11, color="#0F172A"),
+                )
+                st.plotly_chart(fig_pl, use_container_width=True, config={"displayModeBar": False})
+            else:
+                st.caption("No unrealized P/L data.")
+        else:
+            st.caption("No unrealized P/L data.")
 
-    # Today’s focus
-    st.markdown("#### Today’s Focus")
-    winners = metrics["top_winners"]
-    losers = metrics["top_losers"]
-    if not winners.empty or not losers.empty:
-        c1, c2 = st.columns(2)
+    # Today’s Focus – top winners/losers bullets
+    with u2:
+        winners = metrics["top_winners"]
+        losers = metrics["top_losers"]
         if not winners.empty:
-            c1.markdown("**Top Winners**")
+            st.markdown("**Top Winners**")
             for _, r in winners.iterrows():
-                c1.markdown(f"- **{r[symbol_col]}** up {fmt_currency(r['UnrealizedPL'],0)} unrealized")
+                st.markdown(f"- **{r[symbol_col]}** up {fmt_currency(r['UnrealizedPL'],0)} unrealized")
+        else:
+            st.caption("No winners yet.")
+
+        st.markdown("---")
+
         if not losers.empty:
-            c2.markdown("**Top Losers**")
+            st.markdown("**Top Losers**")
             for _, r in losers.iterrows():
-                c2.markdown(f"- **{r[symbol_col]}** down {fmt_currency(r['UnrealizedPL'],0)} unrealized")
+                st.markdown(f"- **{r[symbol_col]}** down {fmt_currency(r['UnrealizedPL'],0)} unrealized")
+        else:
+            st.caption("No losers yet.")
 
-    st.markdown("---")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    # AI Desk quick glance
+    # ---------- AI Desk quick glance ----------
     st.markdown("### AI Desk – Quick Glance")
 
     if symbol_col is None:
@@ -614,6 +743,7 @@ def render_overview(scored_df: pd.DataFrame):
                     mode=mode,
                 )
             render_ai_glance_card(ai_view)
+
 
 
 def render_positions(scored_df: pd.DataFrame):
