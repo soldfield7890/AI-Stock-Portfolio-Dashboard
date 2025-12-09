@@ -1,7 +1,4 @@
-# app.py
-
 import os
-from pathlib import Path
 from typing import Optional, Dict, Any
 
 import numpy as np
@@ -10,994 +7,790 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 
-from src.loaders import load_csv
-from src.scoring import score_portfolio
-from src.fundamentals import get_fundamentals_for_symbols
-from src.ai_research import run_mini_trading_desk, _get_client
+# --- Optional imports from your project modules ---
+try:
+    from src.scoring import score_portfolio  # type: ignore
+except Exception:  # pragma: no cover
+    score_portfolio = None  # type: ignore
+
+try:
+    from src.loaders import import_load_csv  # type: ignore
+except Exception:  # pragma: no cover
+    import_load_csv = None  # type: ignore
+
+try:
+    from src.ai_research import run_mini_trading_desk  # type: ignore
+except Exception:  # pragma: no cover
+    run_mini_trading_desk = None  # type: ignore
 
 
-# ---------------------------
-#  STREAMLIT BASE CONFIG
-# ---------------------------
+# ---------------------------------------------------------------------
+#  Page config & global styling
+# ---------------------------------------------------------------------
+
 
 st.set_page_config(
     page_title="Oldfield AI Stock Dashboard",
-    page_icon="💹",
+    page_icon="📈",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
-# ---------------------------
-#  GLOBAL STYLING (GLASS / MODERN)
-# ---------------------------
 
-st.markdown(
-    """
-<style>
-/* Overall background */
-[data-testid="stAppViewContainer"] {
-    background: radial-gradient(circle at top left, #e0f2fe 0, #f9fafb 40%, #e5e7eb 100%);
-    color: #0f172a;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-}
+def inject_global_css() -> None:
+    """Glass / modern styling with better contrast."""
+    st.markdown(
+        """
+        <style>
+        html, body, [class*="stApp"] {
+            background: radial-gradient(circle at top left, #e4edff 0, #f5f7fb 40%, #f9fbff 100%);
+            color: #0f172a;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+                         "Segoe UI", sans-serif;
+        }
 
-/* Sidebar (if used) */
-[data-testid="stSidebar"] {
-    background: #020617;
-}
+        .block-container {
+            padding-top: 1.5rem;
+            padding-bottom: 3rem;
+            max-width: 1500px;
+        }
 
-/* Make default text darker / readable */
-html, body, [class*="css"] {
-    color: #020617 !important;
-}
+        /* Glass cards */
+        .of-glass-card {
+            background: rgba(255,255,255,0.96);
+            border-radius: 22px;
+            padding: 18px 22px;
+            box-shadow:
+                0 18px 45px rgba(15,23,42,0.18),
+                0 0 0 1px rgba(148,163,184,0.16);
+            backdrop-filter: blur(18px);
+        }
 
-/* Top title block */
-.hero-title {
-    font-size: 32px;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    color: #020617;
-}
+        .of-section-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
 
-.hero-subtitle {
-    font-size: 14px;
-    color: #4b5563;
-    margin-top: 2px;
-}
+        .of-kpi-label {
+            font-size: 0.9rem;
+            color: #6b7280;
+            margin-bottom: 2px;
+        }
 
-/* Soft glass card */
-.soft-card {
-    background: rgba(255,255,255,0.92);
-    border-radius: 18px;
-    padding: 18px 22px;
-    box-shadow:
-        0 18px 35px rgba(15,23,42,0.08),
-        0 0 0 0.5px rgba(148,163,184,0.35);
-    backdrop-filter: blur(20px);
-}
+        .of-kpi-value {
+            font-size: 1.6rem;
+            font-weight: 600;
+            color: #020617;
+        }
 
-/* Metric tiles */
-.metric-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px;
-}
+        .of-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border: 1px solid rgba(148,163,184,0.4);
+            background: rgba(248,250,252,0.9);
+        }
 
-.metric-tile {
-    background: rgba(248,250,252,0.98);
-    border-radius: 16px;
-    padding: 14px 16px 12px 16px;
-    border: 1px solid rgba(148,163,184,0.4);
-}
+        /* Tabs bar glass effect */
+        div[data-baseweb="tab-list"] {
+            background: rgba(255,255,255,0.95);
+            border-radius: 999px;
+            padding: 4px 6px;
+            box-shadow:
+                0 10px 25px rgba(15,23,42,0.18),
+                0 0 0 1px rgba(148,163,184,0.25);
+        }
+        button[role="tab"] {
+            border-radius: 999px !important;
+        }
 
-.metric-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #6b7280;
-}
+        /* File uploader contrast */
+        .stFileUploader label, .stFileUploader div {
+            color: #020617 !important;
+        }
 
-.metric-value-main {
-    font-size: 24px;
-    font-weight: 650;
-    margin-top: 2px;
-    color: #020617;
-}
-
-.metric-subtext {
-    font-size: 11px;
-    color: #9ca3af;
-}
-
-.metric-positive {
-    color: #16a34a;
-    font-weight: 600;
-}
-
-.metric-negative {
-    color: #dc2626;
-    font-weight: 600;
-}
-
-/* Section headers */
-.section-title {
-    font-size: 18px;
-    font-weight: 650;
-    margin-bottom: 4px;
-    color: #020617;
-}
-
-.section-subtitle {
-    font-size: 12px;
-    color: #6b7280;
-}
-
-/* Tabs */
-[data-testid="stTabs"] button {
-    border-radius: 999px !important;
-    padding: 6px 18px;
-}
-
-[data-testid="stTabs"] button[aria-selected="true"] {
-    background: linear-gradient(90deg,#2563eb,#38bdf8);
-    color: #f9fafb !important;
-}
-
-/* Dataframes */
-[data-testid="stDataFrame"] {
-    border-radius: 16px !important;
-    overflow: hidden !important;
-    box-shadow: 0 12px 30px rgba(15,23,42,0.08);
-}
-
-/* File uploader */
-[data-testid="stFileUploader"] {
-    border-radius: 16px;
-}
-
-[data-testid="stFileUploader"] section {
-    background: #020617;
-    border-radius: 14px;
-    color: #f9fafb;
-}
-
-/* Buttons */
-.stButton>button {
-    border-radius: 999px;
-    padding: 6px 20px;
-    border: none;
-    background: linear-gradient(135deg,#1d4ed8,#38bdf8);
-    color: white;
-    font-weight: 500;
-    box-shadow: 0 10px 25px rgba(37,99,235,0.35);
-}
-
-.stButton>button:hover {
-    background: linear-gradient(135deg,#1e3a8a,#0ea5e9);
-}
-
-/* AI Desk card text */
-.ai-pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-size: 11px;
-    background: rgba(15,23,42,0.04);
-    color: #4b5563;
-}
-
-/* Watchlist badge */
-.badge-watchlist-yes {
-    background: rgba(22,163,74,0.12);
-    color: #15803d;
-    border-radius: 999px;
-    padding: 2px 10px;
-    font-size: 11px;
-    font-weight: 600;
-}
-
-.badge-watchlist-no {
-    background: rgba(248,250,252,0.9);
-    color: #6b7280;
-    border-radius: 999px;
-    padding: 2px 10px;
-    font-size: 11px;
-}
-
-/* Health text colors */
-.health-good { color: #16a34a; }
-.health-ok { color: #f59e0b; }
-.health-bad { color: #dc2626; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-# ---------------------------
-#  HELPER FUNCTIONS
-# ---------------------------
+        /* Dataframe text size */
+        .stDataFrame table {
+            font-size: 0.85rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
-def format_currency(v: float) -> str:
-    if pd.isna(v):
+inject_global_css()
+
+
+# ---------------------------------------------------------------------
+#  Utilities
+# ---------------------------------------------------------------------
+
+
+def friendly_currency(x: float) -> str:
+    if pd.isna(x):
         return "—"
-    sign = "-" if v < 0 else ""
-    v_abs = abs(v)
-    if v_abs >= 1_000_000_000:
-        return f"{sign}${v_abs/1_000_000_000:,.1f}B"
-    if v_abs >= 1_000_000:
-        return f"{sign}${v_abs/1_000_000:,.1f}M"
-    return f"{sign}${v_abs:,.0f}"
+    sign = "-" if x < 0 else ""
+    x = abs(x)
+    if x >= 1_000_000_000:
+        return f"{sign}${x/1_000_000_000:,.1f}B"
+    if x >= 1_000_000:
+        return f"{sign}${x/1_000_000:,.1f}M"
+    if x >= 1_000:
+        return f"{sign}${x/1_000:,.1f}K"
+    return f"{sign}${x:,.0f}"
 
 
-def format_pct(v: float) -> str:
-    if pd.isna(v):
-        return "—"
-    return f"{v*100:,.1f}%"
+def bucket_counts(df: pd.DataFrame) -> tuple[int, int, int]:
+    """Speculative (<40), Middle (40–59), Core (60+)."""
+    if "Score" not in df.columns:
+        return 0, 0, 0
+    s = df["Score"]
+    return int((s < 40).sum()), int(((s >= 40) & (s < 60)).sum()), int((s >= 60).sum())
 
 
-def ensure_numeric(df: pd.DataFrame, cols) -> pd.DataFrame:
-    for c in cols:
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-    return df
+def decision_counts(df: pd.DataFrame) -> Dict[str, int]:
+    if "Decision" not in df.columns:
+        return {}
+    decisions = ["Strong Buy", "Buy", "Hold", "Trim", "Exit / Avoid"]
+    return {d: int((df["Decision"] == d).sum()) for d in decisions}
 
 
-# ---------------------------
-#  OVERVIEW TAB
-# ---------------------------
+def top_unrealized(df: pd.DataFrame, n: int = 3):
+    if "UnrealizedPL" not in df.columns:
+        return df.head(0), df.head(0)
+    df_sorted = df.sort_values("UnrealizedPL", ascending=False)
+    winners = df_sorted.head(n)
+    losers = df_sorted.tail(n).sort_values("UnrealizedPL")
+    return winners, losers
 
 
-def build_health_gauge(avg_score: float) -> go.Figure:
-    # Portfolio health: 0–100, segments <40 red, 40–60 yellow, >60 green.
+def portfolio_summary(df: pd.DataFrame) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+
+    out["total_value"] = float(df["CurrentValue"].sum()) if "CurrentValue" in df.columns else float("nan")
+    out["total_unrealized"] = float(df["UnrealizedPL"].sum()) if "UnrealizedPL" in df.columns else float("nan")
+    out["avg_score"] = float(df["Score"].mean()) if "Score" in df.columns else float(50.0)
+    out["positions"] = int(len(df))
+
+    if "PortfolioWeightPct" in df.columns and "Symbol" in df.columns and not df.empty:
+        idx = df["PortfolioWeightPct"].idxmax()
+        row = df.loc[idx]
+        out["largest_symbol"] = str(row.get("Symbol", "—"))
+        out["largest_weight"] = float(row.get("PortfolioWeightPct", np.nan))
+    else:
+        out["largest_symbol"] = "—"
+        out["largest_weight"] = float("nan")
+
+    out["health"] = float(df["Score"].mean()) if "Score" in df.columns and not df.empty else 50.0
+
+    spec, mid, core = bucket_counts(df)
+    out["spec"], out["mid"], out["core"] = spec, mid, core
+
+    return out
+
+
+# ---------------------------------------------------------------------
+#  Overview-specific helpers
+# ---------------------------------------------------------------------
+
+
+def render_health_gauge(health: float):
     fig = go.Figure()
 
     fig.add_trace(
         go.Indicator(
             mode="gauge+number",
-            value=avg_score,
-            number={"suffix": " / 100", "font": {"size": 20}},
+            value=health,
+            number={"suffix": " / 100", "font": {"size": 22}},
             gauge={
-                "axis": {"range": [0, 100]},
-                "bar": {"color": "#1d4ed8", "thickness": 0.35},
-                "bgcolor": "rgba(15,23,42,0.03)",
+                "shape": "angular",
+                "axis": {"range": [0, 100], "tickwidth": 0, "tickcolor": "rgba(0,0,0,0)"},
+                "bar": {"color": "#1d4ed8", "thickness": 0.22},
+                "bgcolor": "rgba(255,255,255,0)",
                 "borderwidth": 0,
                 "steps": [
-                    {"range": [0, 40], "color": "rgba(248,113,113,0.55)"},
-                    {"range": [40, 60], "color": "rgba(234,179,8,0.55)"},
-                    {"range": [60, 100], "color": "rgba(34,197,94,0.55)"},
+                    {"range": [0, 40], "color": "#fee2e2"},
+                    {"range": [40, 60], "color": "#fef3c7"},
+                    {"range": [60, 100], "color": "#dcfce7"},
                 ],
             },
             domain={"x": [0, 1], "y": [0, 1]},
-            title={"text": "Portfolio Health", "font": {"size": 14}},
         )
     )
 
     fig.update_layout(
-        height=280,
-        margin=dict(l=0, r=0, t=50, b=0),
+        margin=dict(l=0, r=0, t=10, b=0),
         paper_bgcolor="rgba(0,0,0,0)",
+        height=260,
     )
-    return fig
+    st.plotly_chart(fig, use_container_width=True)
 
 
-def render_overview(scored_df: Optional[pd.DataFrame]):
-    if scored_df is None or scored_df.empty:
-        st.info("Upload a positions CSV on the left to see your portfolio cockpit.")
+def render_score_mix(df: pd.DataFrame):
+    spec, mid, core = bucket_counts(df)
+    data = pd.DataFrame(
+        {
+            "Bucket": ["Speculative (<40)", "Middle (40–59)", "Core (60+)"],
+            "Count": [spec, mid, core],
+        }
+    )
+    fig = px.bar(
+        data,
+        x="Bucket",
+        y="Count",
+        text="Count",
+    )
+    fig.update_traces(
+        textposition="outside",
+        marker=dict(
+            color=["#fecaca", "#bfdbfe", "#bbf7d0"],
+            line=dict(color="#1f2937", width=0.5),
+        ),
+    )
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=8, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        yaxis=dict(showgrid=False),
+        xaxis=dict(showgrid=False),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_action_summary(df: pd.DataFrame):
+    counts = decision_counts(df)
+    cols = st.columns(5)
+    labels = ["Strong Buy", "Buy", "Hold", "Trim", "Exit / Avoid"]
+    colors = ["#22c55e", "#4ade80", "#e5e7eb", "#fbbf24", "#fca5a5"]
+    for col, label, color in zip(cols, labels, colors):
+        with col:
+            st.markdown('<div class="of-kpi-label">{}</div>'.format(label), unsafe_allow_html=True)
+            val = counts.get(label, 0)
+            st.markdown(
+                f'<div class="of-kpi-value" style="color:{color};">{val}</div>',
+                unsafe_allow_html=True,
+            )
+
+
+def render_unrealized_focus(df: pd.DataFrame):
+    if "Symbol" not in df.columns or "UnrealizedPL" not in df.columns:
+        st.info("Unrealized P/L columns not available in this dataset.")
         return
 
-    # Make sure numeric fields are numeric
-    scored_df = ensure_numeric(
-        scored_df,
-        [
-            "CurrentValue",
-            "UnrealizedPL",
-            "TodayPLDollar",
-            "TodayPLPct",
-            "Score",
-        ],
+    chart_df = df[["Symbol", "UnrealizedPL"]].copy()
+    chart_df["UnrealizedPL"] = chart_df["UnrealizedPL"].astype(float)
+
+    fig = px.bar(
+        chart_df.sort_values("UnrealizedPL", ascending=False),
+        x="Symbol",
+        y="UnrealizedPL",
+    )
+    fig.update_traces(marker=dict(color="#93c5fd", line=dict(color="#1f2937", width=0.3)))
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=10, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        yaxis_title="Unrealized P/L ($)",
+        xaxis_title="",
     )
 
-    total_value = scored_df["CurrentValue"].sum() if "CurrentValue" in scored_df else np.nan
-    total_unreal = scored_df["UnrealizedPL"].sum() if "UnrealizedPL" in scored_df else np.nan
-    positions = len(scored_df)
+    left, right = st.columns([2.3, 1])
+    with left:
+        st.subheader("Unrealized P/L by Ticker")
+        st.plotly_chart(fig, use_container_width=True)
 
-    avg_score = scored_df["Score"].mean() if "Score" in scored_df else np.nan
-    if "Score" in scored_df and "CurrentValue" in scored_df and total_value > 0:
-        value_weighted_score = np.average(
-            scored_df["Score"].fillna(avg_score),
-            weights=scored_df["CurrentValue"].fillna(0),
-        )
-    else:
-        value_weighted_score = np.nan
+    with right:
+        winners, losers = top_unrealized(df)
+        st.subheader("Today’s Focus")
 
-    # Largest position
-    largest_symbol = "—"
-    largest_weight = np.nan
-    if "CurrentValue" in scored_df and "Symbol" in scored_df and total_value > 0:
-        idx = scored_df["CurrentValue"].idxmax()
-        row = scored_df.loc[idx]
-        largest_symbol = str(row.get("Symbol", "—"))
-        largest_weight = row["CurrentValue"] / total_value
+        def bullet_list(title: str, subset: pd.DataFrame, positive: bool):
+            st.markdown(f"**{title}**")
+            if subset.empty:
+                st.write("None.")
+                return
+            for _, row in subset.iterrows():
+                ticker = row.get("Symbol", "—")
+                pl = row.get("UnrealizedPL", np.nan)
+                color = "#16a34a" if positive else "#b91c1c"
+                st.markdown(
+                    f"- **{ticker}** "
+                    f"<span style='color:{color};'>{friendly_currency(pl)} unrealized</span>",
+                    unsafe_allow_html=True,
+                )
 
-    # Score buckets
-    speculative = middle = core = 0
-    if "Score" in scored_df:
-        speculative = (scored_df["Score"] < 40).sum()
-        middle = ((scored_df["Score"] >= 40) & (scored_df["Score"] < 60)).sum()
-        core = (scored_df["Score"] >= 60).sum()
+        bullet_list("Top Winners", winners, positive=True)
+        bullet_list("Top Losers", losers, positive=False)
 
-    # Decision mix
-    decisions = scored_df.get("Decision", pd.Series(dtype=str)).fillna("Unknown")
-    decision_counts = decisions.value_counts()
-    strong_buy_n = decision_counts.get("Strong Buy", 0)
-    buy_n = decision_counts.get("Buy", 0)
-    hold_n = decision_counts.get("Hold", 0)
-    trim_n = decision_counts.get("Trim", 0)
-    exit_n = decision_counts.get("Exit / Avoid", 0)
 
-    # Winners / losers for "Today's Focus"
-    winners = []
-    losers = []
-    if "UnrealizedPL" in scored_df and "Symbol" in scored_df:
-        tmp = scored_df[["Symbol", "UnrealizedPL"]].dropna()
-        winners = tmp.nlargest(3, "UnrealizedPL").to_dict("records")
-        losers = tmp.nsmallest(3, "UnrealizedPL").to_dict("records")
+# ---------------------------------------------------------------------
+#  Tab renderers
+# ---------------------------------------------------------------------
 
-    # ---------------- KPIs + HEALTH GAUGE ----------------
-    top_col_left, top_col_right = st.columns([1.8, 1])
 
-    with top_col_left:
-        st.markdown('<div class="soft-card">', unsafe_allow_html=True)
+def render_overview(df: pd.DataFrame):
+    summary = portfolio_summary(df)
 
-        st.markdown(
-            '<div class="section-title">Portfolio Snapshot</div>'
-            '<div class="section-subtitle">High-level read on value, risk, and concentration.</div>',
-            unsafe_allow_html=True,
-        )
-
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown('<div class="metric-grid">', unsafe_allow_html=True)
-
-            # Tile 1 – Total value
-            st.markdown(
-                f"""
-                <div class="metric-tile">
-                  <div class="metric-label">Total portfolio value</div>
-                  <div class="metric-value-main">{format_currency(total_value)}</div>
-                  <div class="metric-subtext">Sum of all positions</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            # Tile 2 – Unrealized P/L
-            unreal_class = "metric-positive" if total_unreal >= 0 else "metric-negative"
-            st.markdown(
-                f"""
-                <div class="metric-tile">
-                  <div class="metric-label">Total unrealized P/L</div>
-                  <div class="metric-value-main {unreal_class}">{format_currency(total_unreal)}</div>
-                  <div class="metric-subtext">Across all holdings</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            # Tile 3 – Positions
-            st.markdown(
-                f"""
-                <div class="metric-tile">
-                  <div class="metric-label">Positions</div>
-                  <div class="metric-value-main">{positions}</div>
-                  <div class="metric-subtext">Unique tickers</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        with c2:
-            st.markdown('<div class="metric-grid">', unsafe_allow_html=True)
-
-            # Tile 4 – Average score
-            st.markdown(
-                f"""
-                <div class="metric-tile">
-                  <div class="metric-label">Average score</div>
-                  <div class="metric-value-main">{avg_score:0.1f}</div>
-                  <div class="metric-subtext">Simple average of scoring model</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            # Tile 5 – Value-weighted score
-            st.markdown(
-                f"""
-                <div class="metric-tile">
-                  <div class="metric-label">Value-weighted score</div>
-                  <div class="metric-value-main">{value_weighted_score:0.1f}</div>
-                  <div class="metric-subtext">Score weighted by position size</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            # Tile 6 – Largest position
-            lw_text = f"{largest_symbol} • {largest_weight*100:0.1f}%" if not pd.isna(largest_weight) else largest_symbol
-            st.markdown(
-                f"""
-                <div class="metric-tile">
-                  <div class="metric-label">Largest position</div>
-                  <div class="metric-value-main">{largest_symbol}</div>
-                  <div class="metric-subtext">{lw_text}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with top_col_right:
-        st.markdown('<div class="soft-card">', unsafe_allow_html=True)
-        health_class = "health-good" if avg_score >= 60 else "health-ok" if avg_score >= 40 else "health-bad"
-        st.markdown(
-            f"""
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-              <div class="section-title" style="margin-bottom:0;">Health Gauge</div>
-              <div class="section-subtitle {health_class}">
-                {"Healthy core" if avg_score >= 60 else "Mixed risk" if avg_score >= 40 else "Speculative tilt"}
-              </div>
+    # HEADER TILE
+    st.markdown(
+        """
+        <div class="of-glass-card" style="margin-bottom:18px;">
+          <div class="of-section-label">Dashboard</div>
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div>
+              <h1 style="margin:0; font-size:2rem;">Overview</h1>
+              <p style="margin:2px 0 0; color:#6b7280; font-size:0.95rem;">
+                Command center for value, risk, and next actions across your portfolio.
+              </p>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        fig_gauge = build_health_gauge(float(avg_score if not pd.isna(avg_score) else 0.0))
-        st.plotly_chart(fig_gauge, use_container_width=True, config={"displayModeBar": False})
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("")  # spacing
-
-    # ---------------- SCORE MIX + ACTION SUMMARY STRIP ----------------
-    strip_col1, strip_col2 = st.columns([1.2, 1.3])
-
-    with strip_col1:
-        st.markdown('<div class="soft-card">', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="section-title">Score Mix</div>'
-            '<div class="section-subtitle">How your positions stack up by conviction bucket.</div>',
-            unsafe_allow_html=True,
-        )
-
-        score_mix_df = pd.DataFrame(
-            {
-                "Bucket": ["Speculative (<40)", "Middle (40–59)", "Core (60+)"],
-                "Count": [speculative, middle, core],
-            }
-        )
-        fig_mix = px.bar(
-            score_mix_df,
-            x="Bucket",
-            y="Count",
-            text="Count",
-        )
-        fig_mix.update_traces(
-            marker_color="#60a5fa",
-            marker_line_color="#1d4ed8",
-            marker_line_width=1,
-            textposition="outside",
-        )
-        fig_mix.update_layout(
-            height=260,
-            margin=dict(l=0, r=0, t=10, b=20),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(255,255,255,0)",
-            xaxis_title=None,
-            yaxis_title=None,
-        )
-        st.plotly_chart(fig_mix, use_container_width=True, config={"displayModeBar": False})
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with strip_col2:
-        st.markdown('<div class="soft-card">', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="section-title">Action Summary</div>'
-            '<div class="section-subtitle">Headcount by decision – what your model is telling you.</div>',
-            unsafe_allow_html=True,
-        )
-
-        c_a1, c_a2, c_a3, c_a4, c_a5 = st.columns(5)
-        tiles = [
-            ("Strong Buy", strong_buy_n, "#16a34a"),
-            ("Buy", buy_n, "#22c55e"),
-            ("Hold", hold_n, "#64748b"),
-            ("Trim", trim_n, "#f97316"),
-            ("Exit / Avoid", exit_n, "#dc2626"),
-        ]
-        for col, (label, count, color) in zip(
-            [c_a1, c_a2, c_a3, c_a4, c_a5], tiles
-        ):
-            with col:
-                st.markdown(
-                    f"""
-                    <div class="metric-tile" style="padding:10px 12px;">
-                      <div class="metric-label" style="color:{color};">{label}</div>
-                      <div class="metric-value-main" style="font-size:20px;">{count}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("")  # spacing
-
-    # ---------------- UNREALIZED P/L + TODAY'S FOCUS ----------------
-    st.markdown('<div class="soft-card">', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="section-title">Unrealized P/L &amp; Today’s Focus</div>'
-        '<div class="section-subtitle">Where your money is working for you – and where risk is building.</div>',
+            <div class="of-pill">
+              Mode: <span style="font-weight:600;">Live review</span>
+            </div>
+          </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    left_bar, right_focus = st.columns([2.1, 1])
+    # ROW 1 – KPIs + HEALTH GAUGE
+    col_kpi, col_health = st.columns([2, 1.3])
 
-    with left_bar:
-        if "UnrealizedPL" in scored_df and "Symbol" in scored_df:
-            bar_df = scored_df.copy()
-            bar_df["UnrealizedPL"] = pd.to_numeric(bar_df["UnrealizedPL"], errors="coerce")
-            bar_df = bar_df.sort_values("UnrealizedPL", ascending=False)
-            fig_bar = px.bar(
-                bar_df,
-                x="Symbol",
-                y="UnrealizedPL",
-                labels={"UnrealizedPL": "Unrealized P/L ($)"},
+    with col_kpi:
+        st.markdown('<div class="of-glass-card">', unsafe_allow_html=True)
+        st.markdown('<div class="of-section-label">Portfolio snapshot</div>', unsafe_allow_html=True)
+
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            st.markdown('<div class="of-kpi-label">Total Value</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="of-kpi-value">{friendly_currency(summary["total_value"])}</div>',
+                unsafe_allow_html=True,
             )
-            colors = ["#22c55e" if v >= 0 else "#f97316" for v in bar_df["UnrealizedPL"].fillna(0)]
-            fig_bar.update_traces(
-                marker_color=colors,
-                marker_line_color="#0f172a",
-                marker_line_width=0.4,
+        with k2:
+            st.markdown('<div class="of-kpi-label">Total Unrealized P/L</div>', unsafe_allow_html=True)
+            color = "#16a34a" if summary["total_unrealized"] >= 0 else "#b91c1c"
+            st.markdown(
+                f'<div class="of-kpi-value" style="color:{color};">'
+                f'{friendly_currency(summary["total_unrealized"])}</div>',
+                unsafe_allow_html=True,
             )
-            fig_bar.update_layout(
-                height=320,
-                margin=dict(l=0, r=0, t=15, b=40),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(255,255,255,0)",
-                xaxis_title=None,
-                yaxis_title=None,
+        with k3:
+            st.markdown('<div class="of-kpi-label">Average Score</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="of-kpi-value">{summary["avg_score"]:.1f}</div>',
+                unsafe_allow_html=True,
             )
-            st.plotly_chart(fig_bar, use_container_width=True, config={"displayModeBar": False})
-        else:
-            st.info("Unrealized P/L data not available in this file.")
+        with k4:
+            st.markdown('<div class="of-kpi-label">Positions</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="of-kpi-value">{summary["positions"]}</div>',
+                unsafe_allow_html=True,
+            )
 
-    with right_focus:
-        st.markdown("#### Today’s Focus")
-        st.markdown("**Top Winners**", unsafe_allow_html=True)
-        if winners:
-            for w in winners:
-                st.markdown(
-                    f"- **{w['Symbol']}** up {format_currency(w['UnrealizedPL'])} unrealized",
-                    unsafe_allow_html=True,
-                )
-        else:
-            st.markdown("- None yet.")
+        st.markdown(
+            "<hr style='margin:12px 0; border:none; border-top:1px solid #e5e7eb;' />",
+            unsafe_allow_html=True,
+        )
 
-        st.markdown("**Top Losers**")
-        if losers:
-            for l in losers:
-                st.markdown(
-                    f"- **{l['Symbol']}** down {format_currency(l['UnrealizedPL'])} unrealized",
-                    unsafe_allow_html=True,
-                )
-        else:
-            st.markdown("- None yet.")
+        m1, m2, m3 = st.columns(3)
+        with m1:
+            st.markdown('<div class="of-kpi-label">Speculative (&lt;40)</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="of-kpi-value">{summary["spec"]}</div>', unsafe_allow_html=True)
+        with m2:
+            st.markdown('<div class="of-kpi-label">Middle (40–59)</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="of-kpi-value">{summary["mid"]}</div>', unsafe_allow_html=True)
+        with m3:
+            st.markdown('<div class="of-kpi-label">Core (60+)</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="of-kpi-value">{summary["core"]}</div>', unsafe_allow_html=True)
 
-        # Quick moves based on decisions
-        st.markdown("**Immediate Moves Radar**")
-        radar_lines = []
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        if "Decision" in scored_df and "Symbol" in scored_df and "CurrentValue" in scored_df:
-            tmp = scored_df.copy()
-            tmp["WeightPct"] = tmp["CurrentValue"] / total_value * 100 if total_value > 0 else np.nan
+    with col_health:
+        st.markdown('<div class="of-glass-card">', unsafe_allow_html=True)
+        st.markdown('<div class="of-section-label">Health</div>', unsafe_allow_html=True)
+        render_health_gauge(summary["health"])
+        st.markdown('</div>', unsafe_allow_html=True)
 
-            trim_df = tmp[tmp["Decision"] == "Trim"].sort_values("WeightPct", ascending=False).head(3)
-            for _, r in trim_df.iterrows():
-                radar_lines.append(
-                    f"Trim **{r['Symbol']}** (≈{r['WeightPct']:0.1f}% of portfolio)."
-                )
+    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
 
-            exit_df = tmp[tmp["Decision"].str.contains("Exit", na=False)].sort_values(
-                "WeightPct", ascending=False
-            ).head(3)
-            for _, r in exit_df.iterrows():
-                radar_lines.append(
-                    f"Re-evaluate / exit **{r['Symbol']}** (≈{r['WeightPct']:0.1f}%)."
-                )
+    # ROW 2 – SCORE MIX + ACTION QUEUE
+    left, right = st.columns([1.4, 1.6])
+    with left:
+        st.markdown('<div class="of-glass-card">', unsafe_allow_html=True)
+        st.markdown('<div class="of-section-label">Score mix</div>', unsafe_allow_html=True)
+        render_score_mix(df)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-            buy_df = tmp[tmp["Decision"].str.contains("Strong Buy", na=False)].sort_values(
-                "WeightPct", ascending=False
-            ).head(3)
-            for _, r in buy_df.iterrows():
-                radar_lines.append(
-                    f"Consider adding on dips to **{r['Symbol']}** (score {r['Score']:0.0f})."
-                )
+    with right:
+        st.markdown('<div class="of-glass-card">', unsafe_allow_html=True)
+        st.markdown('<div class="of-section-label">Action queue</div>', unsafe_allow_html=True)
+        render_action_summary(df)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        if radar_lines:
-            for line in radar_lines:
-                st.markdown(f"- {line}")
-        else:
-            st.markdown("- No clear actions surfaced by the model yet.")
+    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    # ROW 3 – UNREALIZED P/L FOCUS
+    st.markdown('<div class="of-glass-card">', unsafe_allow_html=True)
+    render_unrealized_focus(df)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ---------------------------
-#  POSITIONS TAB
-# ---------------------------
+def render_positions(df: pd.DataFrame):
+    st.markdown(
+        """
+        <div class="of-glass-card" style="margin-bottom:18px;">
+          <div class="of-section-label">Positions</div>
+          <h1 style="margin:0; font-size:1.6rem;">Positions & Metrics</h1>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-
-def render_positions(scored_df: Optional[pd.DataFrame]):
-    if scored_df is None or scored_df.empty:
-        st.info("Upload and score a portfolio to see positions.")
+    if df.empty:
+        st.info("No data loaded yet.")
         return
 
-    st.markdown('<div class="soft-card">', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="section-title">Positions &amp; Metrics</div>'
-        '<div class="section-subtitle">Sortable table of all holdings with scores and P/L.</div>',
-        unsafe_allow_html=True,
-    )
-
-    filter_decision = st.selectbox(
+    decision_filter = st.selectbox(
         "Filter by decision",
-        options=["All"] + sorted(scored_df.get("Decision", pd.Series(dtype=str)).dropna().unique().tolist()),
+        options=["All"] + sorted(df.get("Decision", pd.Series()).dropna().unique().tolist()),
     )
 
     sort_col = st.selectbox(
         "Sort by column",
-        options=[c for c in scored_df.columns if scored_df[c].dtype != "object"]
-        + [c for c in scored_df.columns if scored_df[c].dtype == "object"],
-        index=0 if "Score" not in scored_df.columns else list(scored_df.columns).index("Score"),
+        options=[c for c in df.columns if df[c].dtype != "object"] or df.columns.tolist(),
+        index=0,
     )
 
-    sort_asc = st.checkbox("Sort ascending?", value=False)
+    sort_ascending = st.checkbox("Sort ascending?", value=False)
 
-    df_view = scored_df.copy()
-    if filter_decision != "All" and "Decision" in df_view.columns:
-        df_view = df_view[df_view["Decision"] == filter_decision]
+    filtered = df.copy()
+    if decision_filter != "All" and "Decision" in df.columns:
+        filtered = filtered[filtered["Decision"] == decision_filter]
 
-    df_view = df_view.sort_values(sort_col, ascending=sort_asc, na_position="last")
+    filtered = filtered.sort_values(sort_col, ascending=sort_ascending)
 
-    st.dataframe(df_view, use_container_width=True, hide_index=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ---------------------------
-#  FUNDAMENTALS TAB
-# ---------------------------
+    st.dataframe(filtered.reset_index(drop=True), use_container_width=True, height=600)
 
 
-def render_fundamentals(scored_df: Optional[pd.DataFrame]):
-    if scored_df is None or scored_df.empty:
-        st.info("Upload and score a portfolio to see fundamentals.")
-        return
-
-    symbols = scored_df["Symbol"].dropna().unique().tolist()
-    with st.spinner("Pulling fundamentals from Yahoo Finance..."):
-        fundamentals_df = get_fundamentals_for_symbols(symbols)
-
-    if fundamentals_df is None or fundamentals_df.empty:
-        st.warning("No fundamentals could be retrieved.")
-        return
-
-    st.markdown('<div class="soft-card">', unsafe_allow_html=True)
+def render_fundamentals(df: pd.DataFrame):
     st.markdown(
-        '<div class="section-title">Fundamentals Snapshot</div>'
-        '<div class="section-subtitle">Valuation, profitability, risk, and size by ticker.</div>',
+        """
+        <div class="of-glass-card" style="margin-bottom:18px;">
+          <div class="of-section-label">Fundamentals</div>
+          <h1 style="margin:0; font-size:1.6rem;">Fundamentals Snapshot</h1>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    numeric_cols = [c for c in fundamentals_df.columns if fundamentals_df[c].dtype != "object"]
-    sort_col = st.selectbox("Sort by", options=numeric_cols if numeric_cols else fundamentals_df.columns)
-    sort_asc = st.checkbox("Sort ascending?", value=False)
-
-    fundamentals_df = fundamentals_df.sort_values(sort_col, ascending=sort_asc, na_position="last")
-    st.dataframe(fundamentals_df, use_container_width=True, hide_index=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ---------------------------
-#  SIGNALS TAB
-# ---------------------------
-
-
-def render_signals(scored_df: Optional[pd.DataFrame]):
-    if scored_df is None or scored_df.empty:
-        st.info("Upload and score a portfolio to see signals.")
+    if df.empty:
+        st.info("No data loaded yet.")
         return
 
-    st.markdown('<div class="soft-card">', unsafe_allow_html=True)
+    metric_cols = [c for c in ["PE_TTM", "ForwardPE", "DividendYield", "ProfitMargin", "MarketCap", "Beta", "Score"] if c in df.columns]
+    if not metric_cols:
+        st.dataframe(df, use_container_width=True)
+        return
+
+    sort_metric = st.selectbox("Sort by", options=metric_cols, index=metric_cols.index("Score") if "Score" in metric_cols else 0)
+    sort_ascending = st.checkbox("Sort ascending?", value=False, key="fund_sort")
+
+    view = df.sort_values(sort_metric, ascending=sort_ascending).copy()
+
+    # Format key metrics
+    if "DividendYield" in view.columns:
+        view["DividendYield"] = view["DividendYield"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "—")
+    if "ProfitMargin" in view.columns:
+        view["ProfitMargin"] = view["ProfitMargin"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
+    if "MarketCap" in view.columns:
+        view["MarketCap"] = view["MarketCap"].apply(lambda x: friendly_currency(x) if pd.notna(x) else "—")
+
+    st.dataframe(view.reset_index(drop=True), use_container_width=True, height=650)
+
+
+def render_signals(df: pd.DataFrame):
     st.markdown(
-        '<div class="section-title">Signals &amp; Action List</div>'
-        '<div class="section-subtitle">Grouped list of Strong Buys, Trims, and Exits.</div>',
+        """
+        <div class="of-glass-card" style="margin-bottom:18px;">
+          <div class="of-section-label">Signals</div>
+          <h1 style="margin:0; font-size:1.6rem;">Signals & Action List</h1>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    df = scored_df.copy()
-    if "PortfolioWeightPct" not in df.columns and "CurrentValue" in df.columns:
-        tv = df["CurrentValue"].sum()
-        if tv > 0:
-            df["PortfolioWeightPct"] = df["CurrentValue"] / tv * 100
+    if df.empty or "Decision" not in df.columns:
+        st.info("No signal data available.")
+        return
 
     strong_buy = df[df["Decision"] == "Strong Buy"]
     buy = df[df["Decision"] == "Buy"]
     trim = df[df["Decision"] == "Trim"]
-    exit_avoid = df[df["Decision"].str.contains("Exit", na=False)]
+    exit_avoid = df[df["Decision"] == "Exit / Avoid"]
 
-    col_left, col_right = st.columns(2)
-
-    with col_left:
-        st.markdown("### Buy / Add Radar")
+    # BUY RADAR
+    st.markdown('<div class="of-glass-card" style="margin-bottom:14px;">', unsafe_allow_html=True)
+    st.markdown("### Buy / Add Radar", unsafe_allow_html=True)
+    c1, c2 = st.columns([1.4, 1])
+    with c1:
         st.markdown("**Strong Buy**")
-        if strong_buy.empty:
-            st.markdown("_None flagged right now._")
-        else:
-            st.dataframe(
-                strong_buy[
-                    ["Symbol", "Score", "PortfolioWeightPct", "UnrealizedPL", "PE_TTM"]
-                    if "PE_TTM" in strong_buy.columns
-                    else ["Symbol", "Score", "PortfolioWeightPct", "UnrealizedPL"]
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
-
+        st.dataframe(
+            strong_buy[["Symbol", "Score", "PortfolioWeightPct", "UnrealizedPLPct", "PE_TTM", "ProfitMargin"]].reset_index(drop=True)
+            if not strong_buy.empty else strong_buy,
+            use_container_width=True,
+            height=220,
+        )
+    with c2:
         st.markdown("**Buy**")
-        if buy.empty:
-            st.markdown("_None flagged right now._")
-        else:
-            st.dataframe(
-                buy[
-                    ["Symbol", "Score", "PortfolioWeightPct", "UnrealizedPL", "PE_TTM"]
-                    if "PE_TTM" in buy.columns
-                    else ["Symbol", "Score", "PortfolioWeightPct", "UnrealizedPL"]
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
+        st.dataframe(
+            buy[["Symbol", "Score", "PortfolioWeightPct", "UnrealizedPLPct", "PE_TTM", "ProfitMargin"]].reset_index(drop=True)
+            if not buy.empty else buy,
+            use_container_width=True,
+            height=220,
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    with col_right:
-        st.markdown("### De-Risk Radar")
+    # DE-RISK RADAR
+    st.markdown('<div class="of-glass-card">', unsafe_allow_html=True)
+    st.markdown("### De-Risk Radar", unsafe_allow_html=True)
+    c3, c4 = st.columns(2)
+    with c3:
         st.markdown("**Trim**")
-        if trim.empty:
-            st.markdown("_None flagged right now._")
-        else:
-            st.dataframe(
-                trim[
-                    ["Symbol", "Score", "PortfolioWeightPct", "UnrealizedPL", "PE_TTM"]
-                    if "PE_TTM" in trim.columns
-                    else ["Symbol", "Score", "PortfolioWeightPct", "UnrealizedPL"]
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
-
+        st.dataframe(
+            trim[["Symbol", "Score", "PortfolioWeightPct", "UnrealizedPLPct"]].reset_index(drop=True)
+            if not trim.empty else trim,
+            use_container_width=True,
+            height=250,
+        )
+    with c4:
         st.markdown("**Exit / Avoid**")
-        if exit_avoid.empty:
-            st.markdown("_None flagged right now._")
-        else:
-            st.dataframe(
-                exit_avoid[
-                    ["Symbol", "Score", "PortfolioWeightPct", "UnrealizedPL", "PE_TTM"]
-                    if "PE_TTM" in exit_avoid.columns
-                    else ["Symbol", "Score", "PortfolioWeightPct", "UnrealizedPL"]
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.dataframe(
+            exit_avoid[["Symbol", "Score", "PortfolioWeightPct", "UnrealizedPLPct"]].reset_index(drop=True)
+            if not exit_avoid.empty else exit_avoid,
+            use_container_width=True,
+            height=250,
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ---------------------------
-#  AI DESK – QUICK GLANCE
-# ---------------------------
-
-
-def render_ai_desk(scored_df: Optional[pd.DataFrame]):
-    if scored_df is None or scored_df.empty:
-        st.info("Upload and score a portfolio to use the AI Desk.")
-        return
-
-    st.markdown('<div class="soft-card">', unsafe_allow_html=True)
+def render_ai_desk(df: pd.DataFrame):
     st.markdown(
-        '<div class="section-title">AI Desk – Quick Glance</div>'
-        '<div class="section-subtitle">Select a ticker to get an AI-generated snapshot based on fundamentals, trends, and risk.</div>',
+        """
+        <div class="of-glass-card" style="margin-bottom:18px;">
+          <div class="of-section-label">AI Desk</div>
+          <h1 style="margin:0; font-size:1.6rem;">AI Desk – Quick Glance</h1>
+          <p style="margin:4px 0 0; color:#6b7280; font-size:0.9rem;">
+            Lightweight replication of the TradingAgents "trading desk" idea –
+            pick a ticker and let the AI summarize fundamentals, trend, risk, and next actions.
+          </p>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    symbols = scored_df["Symbol"].dropna().unique().tolist()
-    selected = st.selectbox("Select ticker for AI check", options=sorted(symbols))
-
-    depth = st.radio("Depth", options=["lite", "full"], horizontal=True, index=0)
-    run = st.button("Run Mini Trading Desk")
-
-    client = _get_client()
-    if client is None:
-        api_status = "offline"
-    else:
-        api_status = "online"
-
-    if not run:
-        status_text = (
-            "AI Desk online – ready to analyze."
-            if api_status == "online"
-            else "AI Desk offline – add `OPENAI_API_KEY` in secrets to enable."
-        )
-        st.markdown(f'<span class="ai-pill">{status_text}</span>', unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+    if df.empty or "Symbol" not in df.columns:
+        st.info("Load a portfolio first to use the AI Desk.")
         return
 
-    # Locate row for selected ticker
-    row = scored_df[scored_df["Symbol"] == selected].iloc[0]
+    if run_mini_trading_desk is None:
+        st.warning("AI engine (run_mini_trading_desk) is not available in this environment.")
+        return
 
-    # If no API key, use stub output (handled inside run_mini_trading_desk per our earlier patch)
-    with st.spinner("Running Mini Trading Desk view..."):
-        view: Dict[str, Any] = run_mini_trading_desk(
-            ticker=selected,
-            row=row,
+    symbols = sorted(df["Symbol"].dropna().unique().tolist())
+    left, right = st.columns([1, 2])
+
+    with left:
+        selected_ticker = st.selectbox("Select ticker for AI check", options=symbols)
+        depth = st.radio("Depth", options=["lite", "full"], index=0, horizontal=True)
+        run = st.button("Run mini trading desk", use_container_width=True)
+
+    if not run:
+        return
+
+    row = df[df["Symbol"] == selected_ticker].iloc[0].to_dict()
+
+    # Call your AI engine
+    try:
+        ai_view = run_mini_trading_desk(
+            selected_ticker,
+            row,
             mode=depth,
         )
+    except RuntimeError as e:
+        st.error(str(e))
+        return
+    except Exception as e:  # pragma: no cover
+        st.error(f"AI Desk error: {e}")
+        return
 
-    # --- Layout of AI card
-    header_row1, header_row2 = st.columns([2.2, 1])
+    with right:
+        st.markdown('<div class="of-glass-card">', unsafe_allow_html=True)
 
-    title = f"{view.get('ticker', selected)} – {view.get('final_decision', 'View')}"
-    with header_row1:
-        st.markdown(f"### {title}")
+        header = st.columns([2, 1])
+        with header[0]:
+            title = ai_view.get("ticker", selected_ticker)
+            final_decision = ai_view.get("final_decision", "—")
+            st.markdown(f"**AI Trading Desk View – {title}**")
+            st.markdown(
+                f"<span class='of-kpi-label'>Decision:</span> "
+                f"<span style='font-weight:600;'>{final_decision}</span>",
+                unsafe_allow_html=True,
+            )
+        with header[1]:
+            primary = ai_view.get("primary_action", "")
+            if primary:
+                st.markdown(
+                    f"<div class='of-pill' style='justify-content:flex-end;'>"
+                    f"Primary action: <span style='font-weight:600;'>{primary}</span></div>",
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown("<hr />", unsafe_allow_html=True)
+
+        meta_cols = st.columns(3)
+        with meta_cols[0]:
+            st.markdown("**Conviction**")
+            conv = ai_view.get("conviction_score")
+            st.write(conv if conv is not None else "—")
+        with meta_cols[1]:
+            st.markdown("**Horizon**")
+            st.write(ai_view.get("time_horizon", "—"))
+        with meta_cols[2]:
+            st.markdown("**Bucket**")
+            st.write(ai_view.get("bucket_view", "—"))
+
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+        # Fundamentals / Technicals / Sentiment
+        sec1, sec2, sec3 = st.columns(3)
+        with sec1:
+            st.markdown("**Fundamentals**")
+            for line in ai_view.get("fundamental_view", []):
+                st.markdown(f"- {line}")
+        with sec2:
+            st.markdown("**Trend & Technicals**")
+            for line in ai_view.get("technical_view", []):
+                st.markdown(f"- {line}")
+        with sec3:
+            st.markdown("**Sentiment & Story**")
+            for line in ai_view.get("sentiment_view", []):
+                st.markdown(f"- {line}")
+
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+        # Key risks + next actions
+        st.markdown("**Key Risks**")
+        risks = ai_view.get("risk_factors", [])
+        if risks:
+            for r in risks:
+                st.markdown(f"- {r}")
+        else:
+            st.write("None highlighted.")
+
+        next_actions = ai_view.get("next_actions", {})
+        if next_actions:
+            st.markdown("<br/>**Next actions**", unsafe_allow_html=True)
+            for label, text in next_actions.items():
+                st.markdown(f"- **{label}:** {text}")
+
         st.markdown(
-            f"Conviction: **{view.get('conviction_score', '—')}** · "
-            f"Horizon: **{view.get('time_horizon', 'n/a')}** · "
-            f"Bucket: **{view.get('bucket_view', '—')}**"
-        )
-
-    with header_row2:
-        prim = view.get("primary_action", "Review position")
-        st.markdown(
-            f'<div style="text-align:right;"><span class="ai-pill">Primary action: {prim}</span></div>',
+            "<p style='margin-top:10px; font-size:0.75rem; color:#9ca3af;'>"
+            "AI view generated by your mini trading desk engine.</p>",
             unsafe_allow_html=True,
         )
 
-    # Three columns: fundamentals, trend/technicals, sentiment/story
-    c1, c2, c3 = st.columns(3)
-
-    def _render_bullets(lines, title: str, col_handle):
-        with col_handle:
-            st.markdown(f"**{title}**")
-            if not lines:
-                st.markdown("_No notes._")
-                return
-            if isinstance(lines, str):
-                lines = [lines]
-            for line in lines:
-                # Strip any raw HTML tags the model might add
-                safe = str(line).replace("<ul>", "").replace("</ul>", "").replace("<li>", "• ").replace("</li>", "")
-                st.markdown(f"- {safe}")
-
-    _render_bullets(view.get("fundamental_view", []), "Fundamentals", c1)
-    _render_bullets(view.get("technical_view", []) or view.get("trend_view", []), "Trend & Technics", c2)
-    _render_bullets(view.get("sentiment_view", []), "Sentiment & Story", c3)
-
-    # Key risks + next actions
-    st.markdown("---")
-    col_risks, col_actions, col_meta = st.columns([1.6, 1.6, 1])
-
-    _render_bullets(view.get("risk_factors", []), "Key Risks", col_risks)
-
-    with col_actions:
-        st.markdown("**Next Actions**")
-        next_actions = view.get("next_actions", {})
-        if isinstance(next_actions, dict) and next_actions:
-            for label, detail in next_actions.items():
-                st.markdown(f"- **{label}:** {detail}")
-        else:
-            st.markdown("_No structured next actions returned._")
-
-    with col_meta:
-        st.markdown("**Meta**")
-        st.markdown(
-            "AI view generated by your Mini Trading Desk engine (multi-role prompt).",
-        )
-        wl = view.get("watchlist", {})
-        if isinstance(wl, dict) and wl.get("add_to_watchlist"):
-            st.markdown('<span class="badge-watchlist-yes">Watchlist: Add / Keep</span>', unsafe_allow_html=True)
-        else:
-            st.markdown('<span class="badge-watchlist-no">Watchlist: No change</span>', unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ---------------------------
-#  MAIN APP
-# ---------------------------
+# ---------------------------------------------------------------------
+#  Data loading
+# ---------------------------------------------------------------------
+
+
+def load_positions_from_upload(upload) -> pd.DataFrame:
+    if upload is None:
+        return pd.DataFrame()
+
+    try:
+        if import_load_csv is not None:
+            return import_load_csv(upload)  # type: ignore
+    except Exception:
+        pass
+
+    try:
+        return pd.read_csv(upload)
+    except Exception as e:
+        st.error(f"Could not read CSV: {e}")
+        return pd.DataFrame()
+
+
+def score_positions(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    try:
+        if score_portfolio is not None:
+            return score_portfolio(df)  # type: ignore
+    except Exception as e:
+        st.warning(f"Score engine failed, showing raw data only. ({e})")
+    return df
+
+
+# ---------------------------------------------------------------------
+#  Main layout
+# ---------------------------------------------------------------------
 
 
 def main():
-    # Header row with logo and version chip
-    top_l, top_mid, top_r = st.columns([3, 4, 1])
-
-    with top_l:
-        st.markdown('<div class="hero-title">Oldfield AI Stock Dashboard</div>', unsafe_allow_html=True)
+    # Top header with optional logo slot
+    header_left, header_right = st.columns([4, 1])
+    with header_left:
         st.markdown(
-            '<div class="hero-subtitle">Glass-style cockpit for your AI-scored portfolio — positions, fundamentals, and actions in one view.</div>',
+            """
+            <div style="margin-bottom:6px;">
+              <h1 style="margin:0; font-size:2.1rem;">Oldfield AI Stock Dashboard</h1>
+              <p style="margin:2px 0 0; color:#6b7280; font-size:0.9rem;">
+                Glass-style cockpit for tracking positions, fundamentals, signals, and AI-driven views.
+              </p>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
+    with header_right:
+        logo_path = os.getenv("OF_LOGO_PATH", "logo.png")
+        if os.path.exists(logo_path):
+            st.image(logo_path, width=74)
 
-    with top_r:
-        # Logo in the top-right (use your clover logo file in the repo root as "logo.png")
-        logo_path = Path("logo.png")
-        if logo_path.exists():
-            st.image(str(logo_path), width=70)
-        st.markdown(
-            '<div style="text-align:right;"><span class="ai-pill">v1.2 · Experimental</span></div>',
-            unsafe_allow_html=True,
-        )
+    upload = st.file_uploader("Upload portfolio CSV", type=["csv"], label_visibility="collapsed")
+    df_raw = load_positions_from_upload(upload)
+    df_scored = score_positions(df_raw)
 
-    st.markdown("")  # spacing
+    if df_scored.empty:
+        st.info("Upload a positions CSV to get started.")
+        return
 
-    # File upload
-    st.markdown('<div class="soft-card">', unsafe_allow_html=True)
-    upload_col, helper_col = st.columns([2.4, 3])
+    tabs = st.tabs(["Overview", "Positions", "Fundamentals", "Signals", "AI Desk"])
 
-    with upload_col:
-        uploaded_file = st.file_uploader(
-            "Upload portfolio CSV",
-            type=["csv"],
-            help="Use the same column layout you’ve been using for positions.",
-        )
+    with tabs[0]:
+        render_overview(df_scored)
 
-    with helper_col:
-        st.markdown(
-            "Keep a single positions CSV in your drive, overwrite it after trades, then reload this app to re-score the whole portfolio in one click.",
-        )
+    with tabs[1]:
+        render_positions(df_scored)
 
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("")  # spacing
+    with tabs[2]:
+        render_fundamentals(df_scored)
 
-    scored_df: Optional[pd.DataFrame] = None
-    if uploaded_file is not None:
-        try:
-            raw_df = load_csv(uploaded_file)
-            scored_df = score_portfolio(raw_df)
-        except Exception as e:
-            st.error(f"Error loading or scoring portfolio: {e}")
-            scored_df = None
+    with tabs[3]:
+        render_signals(df_scored)
 
-    # Tabs
-    tab_overview, tab_positions, tab_fundamentals, tab_signals, tab_ai = st.tabs(
-        ["Overview", "Positions", "Fundamentals", "Signals", "AI Desk"]
-    )
-
-    with tab_overview:
-        render_overview(scored_df)
-
-    with tab_positions:
-        render_positions(scored_df)
-
-    with tab_fundamentals:
-        render_fundamentals(scored_df)
-
-    with tab_signals:
-        render_signals(scored_df)
-
-    with tab_ai:
-        render_ai_desk(scored_df)
+    with tabs[4]:
+        render_ai_desk(df_scored)
 
 
 if __name__ == "__main__":
