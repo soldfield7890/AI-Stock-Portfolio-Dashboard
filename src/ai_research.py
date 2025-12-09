@@ -8,7 +8,6 @@ import pandas as pd
 try:
     from openai import OpenAI
 except ImportError:
-    # If you use a different client, adjust this import & client init.
     OpenAI = None
 
 
@@ -17,12 +16,16 @@ except ImportError:
 # ---------------------------
 
 def _get_client():
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not set in environment variables.")
+    """
+    Returns an OpenAI client if OPENAI_API_KEY is set and the library is installed.
+    Returns None if not configured, so callers can degrade gracefully instead of crashing.
+    """
     if OpenAI is None:
-        raise RuntimeError("openai Python client not installed. `pip install openai`.")
-    return OpenAI(api_key=api_key)
+        return None
+    key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        return None
+    return OpenAI(api_key=key)
 
 
 # ---------------------------
@@ -364,14 +367,42 @@ def run_mini_trading_desk(
       - ticker, as_of_date
       - final_decision, conviction_score, time_horizon, bucket_view
       - fundamental_view[], technical_view[], sentiment_view[], risk_factors[]
-      - primary_action, next_actions{{...}}
-      - watchlist{{...}}
+      - primary_action, next_actions{...}
+      - watchlist{...}
       - _raw_text (for debugging)
     """
+    # OPTION B behavior: if no API key/client, return a stub instead of crashing
+    client = _get_client()
+    if client is None:
+        context = build_context_from_scored_row(ticker, scored_row)
+        return {
+            "ticker": context.get("ticker", ticker),
+            "as_of_date": context.get("as_of_date"),
+            "final_decision": "NO_API_KEY",
+            "conviction_score": None,
+            "time_horizon": None,
+            "bucket_view": context.get("bucket"),
+            "fundamental_view": [
+                "API key not configured – AI Desk is currently offline."
+            ],
+            "technical_view": [
+                "Add OPENAI_API_KEY to enable AI analysis in the dashboard."
+            ],
+            "sentiment_view": [],
+            "risk_factors": [],
+            "primary_action": "Configure API key",
+            "next_actions": {},
+            "watchlist": {
+                "add_to_watchlist": False,
+                "watchlist_bucket": "None",
+                "notes": "AI analysis unavailable until OPENAI_API_KEY is set.",
+            },
+            "_raw_text": "",
+        }
+
+    # Normal AI flow if key is configured
     context = build_context_from_scored_row(ticker, scored_row)
     prompt = build_research_prompt(context, mode=mode)
-
-    client = _get_client()
 
     response = client.chat.completions.create(
         model=model_name,
