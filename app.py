@@ -364,100 +364,200 @@ def compute_overview_analytics(scored_df: pd.DataFrame):
 
 
 # ----------------- AI Glance Card -----------------
-def render_ai_glance_card(ai_view: dict):
-    decision = ai_view.get("final_decision", "NO_DECISION")
+def render_ai_glance_card(ai_view: Dict[str, Any]):
+    """Pretty, color-coded AI Trading Desk card."""
+
+    if not ai_view:
+        st.info("Run the Mini Trading Desk to see AI output.")
+        return
+
+    # ---- Unpack data safely ----
+    ticker = ai_view.get("ticker", "—")
+    decision_raw = ai_view.get("final_decision") or "No decision"
+    decision_clean = decision_raw.replace("_", " ").title()
     conviction = ai_view.get("conviction_score")
-    horizon = ai_view.get("time_horizon")
-    bucket_view = ai_view.get("bucket_view")
-    fundamentals = ai_view.get("fundamental_view", [])[:3]
-    technicals = ai_view.get("technical_view", [])[:3]
-    sentiment = ai_view.get("sentiment_view", [])[:2]
-    risks = ai_view.get("risk_factors", [])[:2]
-    primary_action = ai_view.get("primary_action")
-    next_actions = ai_view.get("next_actions", {})
-    watchlist = ai_view.get("watchlist", {})
-    ticker = ai_view.get("ticker")
+    horizon = ai_view.get("time_horizon") or "n/a"
+    bucket = ai_view.get("bucket_view") or "Unknown"
+    primary_action = ai_view.get("primary_action") or "—"
 
-    decision_color = {
-        "Strong Buy": "#16A34A",
-        "Buy": "#22C55E",
-        "Hold": "#64748B",
-        "Trim": "#EAB308",
-        "Exit": "#EF4444",
-    }.get(decision, "#0F172A")
+    fundamentals = ai_view.get("fundamental_view") or []
+    technicals = ai_view.get("technical_view") or []
+    sentiment = ai_view.get("sentiment_view") or []
+    risks = ai_view.get("risk_factors") or []
 
+    wl = ai_view.get("watchlist") or {}
+    wl_flag = bool(wl.get("add_to_watchlist", False))
+    wl_bucket = wl.get("watchlist_bucket", "None")
+    wl_notes = wl.get("notes", "")
+
+    next_actions = ai_view.get("next_actions") or {}
+    add_on_dip = next_actions.get("add_on_dip_level")
+    trim_above = next_actions.get("trim_above_level")
+    hard_exit = next_actions.get("hard_exit_level")
+    sizing_note = next_actions.get("position_sizing_note")
+
+    # ---- Decision chip color map ----
+    decision_palette = {
+        "Strong Buy": ("#16a34a", "rgba(22,163,74,0.14)"),
+        "Buy": ("#10b981", "rgba(16,185,129,0.14)"),
+        "Hold": ("#6366f1", "rgba(99,102,241,0.14)"),
+        "Trim": ("#facc15", "rgba(250,204,21,0.20)"),
+        "Exit": ("#ef4444", "rgba(239,68,68,0.20)"),
+        "Exit / Avoid": ("#ef4444", "rgba(239,68,68,0.20)"),
+        "No_Api_Key": ("#6b7280", "rgba(148,163,184,0.30)"),
+        "No Decision": ("#6b7280", "rgba(148,163,184,0.30)"),
+    }
+
+    if decision_raw.upper() == "NO_API_KEY":
+        palette_key = "No_Api_Key"
+    else:
+        palette_key = decision_clean
+
+    decision_color, decision_bg = decision_palette.get(
+        palette_key, ("#0f172a", "rgba(15,23,42,0.06)")
+    )
+
+    # ---- Conviction badge ----
+    conviction_label = "—"
+    conviction_badge_html = ""
+
+    if conviction is not None:
+        conviction_label = f"{conviction:.0f}/100"
+        if conviction >= 75:
+            cv_color, cv_bg = "#16a34a", "rgba(22,163,74,0.14)"
+        elif conviction >= 50:
+            cv_color, cv_bg = "#eab308", "rgba(234,179,8,0.18)"
+        else:
+            cv_color, cv_bg = "#ef4444", "rgba(239,68,68,0.20)"
+
+        conviction_badge_html = f"""
+            <span style="
+                border-radius:999px;
+                padding:3px 10px;
+                font-size:0.75rem;
+                background:{cv_bg};
+                color:{cv_color};
+                margin-left:8px;
+            ">
+                Conviction {conviction_label}
+            </span>
+        """
+
+    # ---- Card wrapper ----
     st.markdown(
-        f"""
-        <div class="glass-card" style="padding:16px 18px; margin-top:6px;">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-            <div>
-              <div style="font-size:0.8rem; color:#64748B;">AI Trading Desk View</div>
-              <div style="font-size:1.2rem; font-weight:600; color:#0F172A;">
-                {ticker} – <span style="color:{decision_color};">{decision}</span>
-              </div>
-              <div style="font-size:0.8rem; color:#6B7280; margin-top:2px;">
-                Conviction: {conviction if conviction is not None else "—"} · {horizon or "Horizon: n/a"} · Bucket: {bucket_view or "n/a"}
-              </div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-size:0.7rem; padding:4px 8px; border-radius:999px;
-                          background:rgba(148,163,184,0.18); color:#0F172A;">
-                Primary action: <strong>{primary_action or "Watch Only"}</strong>
-              </div>
-            </div>
-          </div>
-
-          <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:12px;">
-            <div>
-              <div style="font-size:0.8rem; font-weight:600; color:#0F172A;">Fundamentals</div>
-              <ul style="margin:4px 0 0 16px; padding:0; font-size:0.78rem; color:#4B5563;">
-                {''.join(f'<li>{line}</li>' for line in fundamentals)}
-              </ul>
-            </div>
-            <div>
-              <div style="font-size:0.8rem; font-weight:600; color:#0F172A;">Trend & Technicals</div>
-              <ul style="margin:4px 0 0 16px; padding:0; font-size:0.78rem; color:#4B5563;">
-                {''.join(f'<li>{line}</li>' for line in technicals)}
-              </ul>
-            </div>
-            <div>
-              <div style="font-size:0.8rem; font-weight:600; color:#0F172A;">Sentiment & Story</div>
-              <ul style="margin:4px 0 0 16px; padding:0; font-size:0.78rem; color:#4B5563;">
-                {''.join(f'<li>{line}</li>' for line in sentiment)}
-              </ul>
-            </div>
-          </div>
-
-          <div style="display:flex; gap:16px; margin-top:10px; font-size:0.78rem;">
-            <div style="flex:1;">
-              <div style="font-weight:600; color:#0F172A;">Key Risks</div>
-              <ul style="margin:4px 0 0 16px; padding:0; color:#7F1D1D;">
-                {''.join(f'<li>{line}</li>' for line in risks)}
-              </ul>
-            </div>
-            <div style="flex:1;">
-              <div style="font-weight:600; color:#0F172A;">Next Actions</div>
-              <ul style="margin:4px 0 0 16px; padding:0; color:#4B5563;">
-                <li>Add on dip: {next_actions.get('add_on_dip_level') or '—'}</li>
-                <li>Trim above: {next_actions.get('trim_above_level') or '—'}</li>
-                <li>Hard exit: {next_actions.get('hard_exit_level') or '—'}</li>
-                <li>{next_actions.get('position_sizing_note') or ''}</li>
-              </ul>
-            </div>
-          </div>
-
-          <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div class="small-caption">
-              AI view generated by your Mini Trading Desk engine (multi-role prompt).
-            </div>
-            <div style="font-size:0.75rem; color:#4B5563;">
-              Watchlist: { 'Add – ' + (watchlist.get('watchlist_bucket') or '') if watchlist.get('add_to_watchlist') else 'No change' }
-            </div>
-          </div>
-        </div>
-        """,
+        '<div class="glass-card" style="padding:18px 22px; margin-top:10px;">',
         unsafe_allow_html=True,
     )
+
+    # =======================
+    #   TOP: Header row
+    # =======================
+    top_l, top_r = st.columns([3, 1])
+
+    with top_l:
+        st.markdown(
+            f"""
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <div style="font-size:0.9rem; color:#6B7280;">AI Trading Desk View</div>
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <div style="font-size:1.1rem; font-weight:600; color:#0F172A;">
+                  {ticker} – {decision_clean}
+                </div>
+                <span style="
+                    border-radius:999px;
+                    padding:4px 10px;
+                    font-size:0.75rem;
+                    background:{decision_bg};
+                    color:{decision_color};
+                    ">
+                  {decision_clean}
+                </span>
+                {conviction_badge_html}
+              </div>
+              <div style="font-size:0.85rem; color:#6B7280;">
+                Conviction: {conviction_label}
+                · Horizon: {horizon}
+                · Bucket: {bucket}
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with top_r:
+        st.markdown(
+            f"""
+            <div style="display:flex; justify-content:flex-end;">
+              <span style="
+                  border-radius:999px;
+                  padding:4px 12px;
+                  font-size:0.75rem;
+                  background:rgba(15,23,42,0.04);
+                  color:#4B5563;">
+                Primary action:
+                <span style="font-weight:600;">{primary_action}</span>
+              </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # =======================
+    #   MID: 3 analysis columns
+    # =======================
+
+    def render_bullets(title: str, items: list[str]):
+        st.markdown(f"**{title}**")
+        if items:
+            for txt in items:
+                st.markdown(f"- {txt}")
+        else:
+            st.caption("No insight yet.")
+
+    mid1, mid2, mid3 = st.columns(3)
+    with mid1:
+        render_bullets("Fundamentals", fundamentals)
+    with mid2:
+        render_bullets("Trend & Technicals", technicals)
+    with mid3:
+        render_bullets("Sentiment & Story", sentiment)
+
+    st.markdown(
+        "<hr style='border:none; border-top:1px solid rgba(148,163,184,0.35); "
+        "margin:12px 0 16px;'>",
+        unsafe_allow_html=True,
+    )
+
+    # =======================
+    #   BOTTOM: Risks + Watchlist
+    # =======================
+    bottom_l, bottom_r = st.columns([2, 1])
+
+    with bottom_l:
+        st.markdown("**Key Risks**")
+        if risks:
+            for r in risks:
+                st.markdown(f"- {r}")
+        else:
+            st.caption("No specific risks highlighted yet.")
+
+        st.markdown("**Next Actions**")
+        # Keep these as plain text; no raw HTML.
+        st.markdown(f"- Add on dip: {add_on_dip or '—'}")
+        st.markdown(f"- Trim above: {trim_above or '—'}")
+        st.markdown(f"- Hard exit: {hard_exit or '—'}")
+        if sizing_note:
+            st.markdown(f"- {sizing_note}")
+
+    with bottom_r:
+        st.markdown("**Watchlist**")
+        st.markdown(f"- Add to watchlist: **{'Yes' if wl_flag else 'No'}**")
+        st.markdown(f"- Bucket: **{wl_bucket}**")
+        if wl_notes:
+            st.markdown(f"- Notes: {wl_notes}")
+        st.caption("AI view generated by your Mini Trading Desk engine.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ----------------- Tab renderers -----------------
