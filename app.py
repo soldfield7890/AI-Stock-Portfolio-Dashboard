@@ -6,11 +6,14 @@ import plotly.express as px
 from src.scoring import score_portfolio
 from src.loaders import load_csv
 
-# ----------------- Page config -----------------
+# ----------------- Config -----------------
 st.set_page_config(
     page_title="Oldfield AI Stock Dashboard",
     layout="wide",
 )
+
+LOGO_PATH = "assets/oldfield_logo.png"  # put your clover logo here
+
 
 # ----------------- Custom CSS – Liquid Glass Fintech -----------------
 st.markdown(
@@ -40,7 +43,7 @@ st.markdown(
     backdrop-filter: blur(18px);
 }
 
-/* Header card – stronger hero feel */
+/* Header card – hero */
 .header-card {
     padding: 18px 22px;
     margin-bottom: 10px;
@@ -151,9 +154,9 @@ button[role="tab"][aria-selected="true"] {
     unsafe_allow_html=True,
 )
 
+
 # ----------------- Helper functions -----------------
 def highlight_pl(val):
-    """Color gains green and losses red."""
     if pd.isna(val):
         return ""
     try:
@@ -167,7 +170,6 @@ def highlight_pl(val):
 
 
 def highlight_score(val):
-    """Background color for Score 0–100."""
     if pd.isna(val):
         return ""
     try:
@@ -183,7 +185,6 @@ def highlight_score(val):
 
 
 def highlight_decision(val):
-    """Badge-style background for Decision column."""
     if isinstance(val, str):
         v = val.lower()
     else:
@@ -209,7 +210,6 @@ def detect_symbol_column(df: pd.DataFrame):
     return None
 
 
-# --- Formatting helpers ---
 def fmt_percent(val, decimals=1):
     if pd.isna(val):
         return ""
@@ -221,7 +221,6 @@ def fmt_percent(val, decimals=1):
 
 
 def fmt_ratio_or_percent(val, decimals=1):
-    """Handle values that may be 0–1 or already in percent."""
     if pd.isna(val):
         return ""
     try:
@@ -271,12 +270,10 @@ def fmt_number(val, decimals=2):
 
 
 def style_table(df: pd.DataFrame, highlight_pl_cols=False, highlight_score_col=False, highlight_decision_col=False):
-    """Apply consistent formatting and highlighting to any DataFrame."""
     format_dict = {}
 
     for col in df.columns:
         cl = col.lower()
-
         if cl in ("pe_ttm", "forwardpe"):
             format_dict[col] = lambda v, c=col: fmt_number(v, 2)
         elif "dividendyield" in cl:
@@ -317,7 +314,6 @@ def style_table(df: pd.DataFrame, highlight_pl_cols=False, highlight_score_col=F
 # ----------------- Analytics helpers -----------------
 def compute_overview_analytics(scored_df: pd.DataFrame):
     symbol_col = detect_symbol_column(scored_df)
-
     metrics = {}
 
     if "CurrentValue_clean" in scored_df.columns:
@@ -344,7 +340,6 @@ def compute_overview_analytics(scored_df: pd.DataFrame):
         metrics["avg_score"] = None
         metrics["weighted_score"] = None
 
-    # Score buckets (0–39, 40–59, 60+)
     if "Score" in scored_df.columns:
         buckets = {
             "Speculative (<40)": (scored_df["Score"] < 40).sum(),
@@ -355,13 +350,10 @@ def compute_overview_analytics(scored_df: pd.DataFrame):
     else:
         metrics["score_buckets"] = {}
 
-    # Top winners / losers by UnrealizedPL
     if symbol_col and "UnrealizedPL" in scored_df.columns:
         tmp = scored_df[[symbol_col, "UnrealizedPL"]].dropna()
-        winners = tmp.sort_values("UnrealizedPL", ascending=False).head(3)
-        losers = tmp.sort_values("UnrealizedPL", ascending=True).head(3)
-        metrics["top_winners"] = winners
-        metrics["top_losers"] = losers
+        metrics["top_winners"] = tmp.sort_values("UnrealizedPL", ascending=False).head(3)
+        metrics["top_losers"] = tmp.sort_values("UnrealizedPL", ascending=True).head(3)
     else:
         metrics["top_winners"] = pd.DataFrame()
         metrics["top_losers"] = pd.DataFrame()
@@ -376,13 +368,11 @@ def render_overview(scored_df: pd.DataFrame):
 
     metrics = compute_overview_analytics(scored_df)
 
-    # KPIs row
     c1, c2, c3 = st.columns(3)
     c1.metric("Total Portfolio Value", fmt_currency(metrics["total_value"], 0) if metrics["total_value"] is not None else "—")
     c2.metric("Total Unrealized P/L", fmt_currency(metrics["total_pl"], 0) if metrics["total_pl"] is not None else "—")
     c3.metric("Positions", len(scored_df))
 
-    # Secondary metrics row
     if metrics["avg_score"] is not None:
         c4, c5, c6 = st.columns(3)
         c4.metric("Average Score", f"{metrics['avg_score']:.1f}")
@@ -399,7 +389,6 @@ def render_overview(scored_df: pd.DataFrame):
                     help=f"{fmt_percent(row['PortfolioWeightPct'], 2)} of portfolio",
                 )
 
-    # Score bucket chips
     buckets = metrics.get("score_buckets", {})
     if buckets:
         st.markdown("#### Score Mix")
@@ -408,7 +397,6 @@ def render_overview(scored_df: pd.DataFrame):
         b2.metric("Middle (40–59)", buckets.get("Middle (40–59)", 0))
         b3.metric("Core (60+)", buckets.get("Core (60+)", 0))
 
-    # Action summary
     if "Decision" in scored_df.columns:
         st.markdown("#### Action Summary")
         decision_counts = scored_df["Decision"].value_counts().to_dict()
@@ -421,19 +409,13 @@ def render_overview(scored_df: pd.DataFrame):
 
     st.markdown("---")
 
-    # Charts row
     st.markdown("#### Key Charts")
     col_a, col_b = st.columns(2)
 
-    # Score distribution
     if "Score" in scored_df.columns:
         score_series = scored_df["Score"].dropna()
         if not score_series.empty:
-            fig_score = px.histogram(
-                score_series,
-                nbins=15,
-                title="Score Distribution",
-            )
+            fig_score = px.histogram(score_series, nbins=15, title="Score Distribution")
             fig_score.update_traces(marker=dict(line=dict(width=0)))
             fig_score.update_layout(
                 margin=dict(l=10, r=10, t=40, b=10),
@@ -443,7 +425,6 @@ def render_overview(scored_df: pd.DataFrame):
             )
             col_a.plotly_chart(fig_score, use_container_width=True)
 
-    # Allocation by Decision
     if "PortfolioWeightPct" in scored_df.columns and "Decision" in scored_df.columns:
         alloc = (
             scored_df.dropna(subset=["PortfolioWeightPct"])
@@ -465,18 +446,12 @@ def render_overview(scored_df: pd.DataFrame):
             )
             col_b.plotly_chart(fig_alloc, use_container_width=True)
 
-    # P/L by ticker
     st.markdown("#### Unrealized P/L by Position")
     symbol_col = detect_symbol_column(scored_df)
     if symbol_col and "UnrealizedPL" in scored_df.columns:
         pl_df = scored_df[[symbol_col, "UnrealizedPL"]].copy().dropna(subset=["UnrealizedPL"])
         if not pl_df.empty:
-            fig_pl = px.bar(
-                pl_df,
-                x=symbol_col,
-                y="UnrealizedPL",
-                title="Unrealized P/L by Ticker",
-            )
+            fig_pl = px.bar(pl_df, x=symbol_col, y="UnrealizedPL", title="Unrealized P/L by Ticker")
             fig_pl.update_layout(
                 margin=dict(l=10, r=10, t=40, b=10),
                 plot_bgcolor="rgba(255,255,255,0.96)",
@@ -487,7 +462,6 @@ def render_overview(scored_df: pd.DataFrame):
             )
             st.plotly_chart(fig_pl, use_container_width=True)
 
-    # Today’s focus (top 3 winners/losers)
     st.markdown("#### Today’s Focus")
     winners = metrics["top_winners"]
     losers = metrics["top_losers"]
@@ -496,15 +470,11 @@ def render_overview(scored_df: pd.DataFrame):
         if not winners.empty:
             c1.markdown("**Top Winners**")
             for _, r in winners.iterrows():
-                c1.markdown(
-                    f"- **{r[symbol_col]}** up {fmt_currency(r['UnrealizedPL'],0)} unrealized"
-                )
+                c1.markdown(f"- **{r[symbol_col]}** up {fmt_currency(r['UnrealizedPL'],0)} unrealized")
         if not losers.empty:
             c2.markdown("**Top Losers**")
             for _, r in losers.iterrows():
-                c2.markdown(
-                    f"- **{r[symbol_col]}** down {fmt_currency(r['UnrealizedPL'],0)} unrealized"
-                )
+                c2.markdown(f"- **{r[symbol_col]}** down {fmt_currency(r['UnrealizedPL'],0)} unrealized")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -515,9 +485,8 @@ def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
 
     symbol_col = detect_symbol_column(scored_df)
 
-    # --- FILTER BAR ---
     col1, col2, col3, col4 = st.columns([1.1, 1, 1, 1.2])
-    # 1) Decision multi-filter
+
     decision_options = sorted(scored_df["Decision"].dropna().unique()) if "Decision" in scored_df.columns else []
     default_decisions = decision_options
     selected_decisions = col1.multiselect(
@@ -527,7 +496,6 @@ def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
         key="positions_decisions_ms",
     )
 
-    # 2) Score range
     if "Score" in scored_df.columns and not scored_df["Score"].dropna().empty:
         min_score = int(scored_df["Score"].min())
         max_score = int(scored_df["Score"].max())
@@ -541,7 +509,6 @@ def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
     else:
         score_range = None
 
-    # 3) Min portfolio weight
     if "PortfolioWeightPct" in scored_df.columns:
         max_w = float(scored_df["PortfolioWeightPct"].fillna(0).max())
         weight_min = col3.slider(
@@ -555,7 +522,6 @@ def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
     else:
         weight_min = 0.0
 
-    # 4) Text search
     search_text = col4.text_input(
         "Search ticker/description",
         value="",
@@ -581,7 +547,6 @@ def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
             mask = mask | df["Description"].astype(str).str.lower().str.contains(search_text)
         df = df[mask]
 
-    # --- SORT CONTROL (column & direction) ---
     numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
     if not numeric_cols:
         numeric_cols = list(df.columns)
@@ -593,7 +558,7 @@ def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
     sort_col = st.selectbox(
         "Sort column",
         options=numeric_cols,
-        index=min(default_sort_index, len(numeric_cols)-1),
+        index=min(default_sort_index, len(numeric_cols) - 1),
         key="positions_sort_col",
     )
     sort_ascending = st.checkbox(
@@ -604,11 +569,16 @@ def render_positions(scored_df: pd.DataFrame, raw_df: pd.DataFrame):
 
     df_sorted = df.sort_values(by=sort_col, ascending=sort_ascending)
 
-    styled = style_table(df_sorted, highlight_pl_cols=True, highlight_score_col=True, highlight_decision_col=True)
+    styled = style_table(
+        df_sorted,
+        highlight_pl_cols=True,
+        highlight_score_col=True,
+        highlight_decision_col=True,
+    )
     st.dataframe(styled, use_container_width=True, height=520)
 
     st.markdown(
-        '<p class="small-caption">Filter by decision, score, weight, and text search. Click column headers for ad-hoc sorts.</p>',
+        '<p class="small-caption">Filter by decision, score, weight, and search. Click headers to sort interactively.</p>',
         unsafe_allow_html=True,
     )
     st.markdown("</div>", unsafe_allow_html=True)
@@ -623,16 +593,7 @@ def render_fundamentals(scored_df: pd.DataFrame):
     cols = []
     if symbol_col:
         cols.append(symbol_col)
-    for c in [
-        "PE_TTM",
-        "ForwardPE",
-        "DividendYield",
-        "ProfitMargin",
-        "MarketCap",
-        "Beta",
-        "Score",
-        "Decision",
-    ]:
+    for c in ["PE_TTM", "ForwardPE", "DividendYield", "ProfitMargin", "MarketCap", "Beta", "Score", "Decision"]:
         if c in scored_df.columns and c not in cols:
             cols.append(c)
 
@@ -643,10 +604,8 @@ def render_fundamentals(scored_df: pd.DataFrame):
 
     df = scored_df[cols].copy()
 
-    # --- FILTER BAR ---
     fb1, fb2, fb3, fb4 = st.columns([1.1, 1, 1, 1.2])
 
-    # Decision filter
     decision_options = sorted(df["Decision"].dropna().unique()) if "Decision" in df.columns else []
     selected_decisions = fb1.multiselect(
         "Decision filter",
@@ -657,7 +616,6 @@ def render_fundamentals(scored_df: pd.DataFrame):
     if "Decision" in df.columns and selected_decisions:
         df = df[df["Decision"].isin(selected_decisions)]
 
-    # PE filter (upper bound)
     if "PE_TTM" in df.columns and not df["PE_TTM"].replace([np.inf, -np.inf], np.nan).dropna().empty:
         max_pe = float(df["PE_TTM"].replace([np.inf, -np.inf], np.nan).dropna().max())
         pe_cap = fb2.slider(
@@ -670,7 +628,6 @@ def render_fundamentals(scored_df: pd.DataFrame):
         )
         df = df[(df["PE_TTM"].replace([np.inf, -np.inf], np.nan) <= pe_cap) | df["PE_TTM"].isna()]
 
-    # Market cap min
     if "MarketCap" in df.columns and not df["MarketCap"].dropna().empty:
         max_mc = float(df["MarketCap"].dropna().max())
         mc_min = fb3.slider(
@@ -683,7 +640,6 @@ def render_fundamentals(scored_df: pd.DataFrame):
         )
         df = df[df["MarketCap"].fillna(0) >= mc_min * 1_000_000_000]
 
-    # Text search
     search_text = fb4.text_input(
         "Search ticker",
         value="",
@@ -692,7 +648,6 @@ def render_fundamentals(scored_df: pd.DataFrame):
     if search_text and symbol_col:
         df = df[df[symbol_col].astype(str).str.lower().str.contains(search_text)]
 
-    # --- SORT CONTROLS ---
     numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
     sort_col = st.selectbox(
         "Sort by",
@@ -708,11 +663,16 @@ def render_fundamentals(scored_df: pd.DataFrame):
 
     df_sorted = df.sort_values(by=sort_col, ascending=sort_ascending)
 
-    styled = style_table(df_sorted, highlight_pl_cols=False, highlight_score_col=True, highlight_decision_col=True)
+    styled = style_table(
+        df_sorted,
+        highlight_pl_cols=False,
+        highlight_score_col=True,
+        highlight_decision_col=True,
+    )
     st.dataframe(styled, use_container_width=True, height=520)
 
     st.markdown(
-        '<p class="small-caption">Combine decision, P/E, size, and ticker filters to surface your best fundamental setups.</p>',
+        '<p class="small-caption">Combine decision, P/E, size, and ticker filters to surface fundamental opportunities.</p>',
         unsafe_allow_html=True,
     )
     st.markdown("</div>", unsafe_allow_html=True)
@@ -737,7 +697,6 @@ def render_signals(scored_df: pd.DataFrame):
     trim = subset(["Trim"])
     exit_df = subset(["Exit / Avoid"])
 
-    # Quick summary row
     st.markdown("#### Snapshot")
     s1, s2, s3, s4 = st.columns(4)
     s1.metric("Strong Buy", len(strong_buy))
@@ -762,7 +721,7 @@ def render_signals(scored_df: pd.DataFrame):
                 "ProfitMargin",
             ]
             cols = [c for c in cols if c in strong_buy.columns]
-            styled = style_table(strong_buy[cols], highlight_pl_cols=True, highlight_score_col=True, highlight_decision_col=False)
+            styled = style_table(strong_buy[cols], highlight_pl_cols=True, highlight_score_col=True)
             st.dataframe(styled, use_container_width=True, height=260)
 
     with col2:
@@ -779,7 +738,7 @@ def render_signals(scored_df: pd.DataFrame):
                 "ProfitMargin",
             ]
             cols = [c for c in cols if c in buy.columns]
-            styled = style_table(buy[cols], highlight_pl_cols=True, highlight_score_col=True, highlight_decision_col=False)
+            styled = style_table(buy[cols], highlight_pl_cols=True, highlight_score_col=True)
             st.dataframe(styled, use_container_width=True, height=260)
 
     st.markdown("#### De-Risk Radar")
@@ -792,7 +751,7 @@ def render_signals(scored_df: pd.DataFrame):
         else:
             cols = [symbol_col, "Score", "PortfolioWeightPct", "UnrealizedPLPct"]
             cols = [c for c in cols if c in trim.columns]
-            styled = style_table(trim[cols], highlight_pl_cols=True, highlight_score_col=True, highlight_decision_col=False)
+            styled = style_table(trim[cols], highlight_pl_cols=True, highlight_score_col=True)
             st.dataframe(styled, use_container_width=True, height=260)
 
     with col4:
@@ -802,10 +761,104 @@ def render_signals(scored_df: pd.DataFrame):
         else:
             cols = [symbol_col, "Score", "PortfolioWeightPct", "UnrealizedPLPct"]
             cols = [c for c in cols if c in exit_df.columns]
-            styled = style_table(exit_df[cols], highlight_pl_cols=True, highlight_score_col=True, highlight_decision_col=False)
+            styled = style_table(exit_df[cols], highlight_pl_cols=True, highlight_score_col=True)
             st.dataframe(styled, use_container_width=True, height=260)
 
-    # Action bullets
     st.markdown("#### Action Playbook")
     bullets = []
-    if len(strong_buy)_
+    if len(strong_buy) > 0:
+        tickers = ", ".join(strong_buy.sort_values("Score", ascending=False)[symbol_col].head(3))
+        bullets.append(f"- **Review adds to**: {tickers} (Strong Buy)")
+    if len(trim) > 0:
+        tickers = ", ".join(trim.sort_values("PortfolioWeightPct", ascending=False)[symbol_col].head(3))
+        bullets.append(f"- **Consider trims in**: {tickers}")
+    if len(exit_df) > 0:
+        tickers = ", ".join(exit_df.sort_values("Score")[symbol_col].head(3))
+        bullets.append(f"- **Evaluate exiting**: {tickers}")
+
+    if bullets:
+        for b in bullets:
+            st.markdown(b)
+    else:
+        st.caption("No immediate actions surfaced by the model.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# ----------------- Header with logo -----------------
+st.markdown('<div class="glass-card header-card">', unsafe_allow_html=True)
+hcol1, hcol2 = st.columns([4, 1])
+with hcol1:
+    st.markdown(
+        """
+        <div>
+          <h1 style="margin-bottom:4px; color:#F9FAFB;">Oldfield AI Stock Dashboard</h1>
+          <p style="margin:0; color:#CBD5F5; font-size:0.9rem;">
+            Liquid-glass cockpit for your AI-scored portfolio — positions, fundamentals, and actions in one view.
+          </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with hcol2:
+    try:
+        st.image(LOGO_PATH, width=80)
+    except Exception:
+        pass
+    st.markdown(
+        """
+        <div style="text-align:right; margin-top:4px;">
+          <span style="font-size:0.8rem; padding:6px 10px; border-radius:999px;
+                       background:rgba(37,99,235,0.25); color:#E0EAFF;
+                       border:1px solid rgba(129,140,248,0.9);">
+            v1.1 • Experimental
+          </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+st.markdown("</div>", unsafe_allow_html=True)
+
+
+# ----------------- Upload + main -----------------
+st.markdown('<div class="glass-card upload-card">', unsafe_allow_html=True)
+upload_col, right_col = st.columns([2, 3])
+with upload_col:
+    uploaded_file = st.file_uploader("Upload portfolio CSV", type=["csv"])
+with right_col:
+    st.markdown(
+        """
+        <p style="margin-top:4px; font-size:0.8rem; color:#4B5563;">
+        Keep a single positions CSV in your drive, overwrite it, and reload this app to re-score
+        the whole portfolio in one click.
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
+st.markdown("</div>", unsafe_allow_html=True)
+
+if uploaded_file is None:
+    st.info("Upload a CSV to unlock the dashboard views.")
+else:
+    raw_df = load_csv(uploaded_file)
+    scored_df = score_portfolio(raw_df)
+
+    scored_csv = scored_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="⬇️ Download scored portfolio as CSV",
+        data=scored_csv,
+        file_name="scored_portfolio.csv",
+        mime="text/csv",
+        key="download_scored_csv",
+    )
+
+    tabs = st.tabs(["Overview", "Positions", "Fundamentals", "Signals"])
+
+    with tabs[0]:
+        render_overview(scored_df)
+    with tabs[1]:
+        render_positions(scored_df, raw_df)
+    with tabs[2]:
+        render_fundamentals(scored_df)
+    with tabs[3]:
+        render_signals(scored_df)
